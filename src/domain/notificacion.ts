@@ -3,7 +3,9 @@
 // Cada evento aceptado genera exactamente una notificación, que el sistema
 // envía al webhook del cliente de forma asíncrona (con reintentos).
 
+import { ErrorDominio } from "./errores";
 import { EventoGuia } from "./evento-guia";
+import { PoliticaReintentos } from "./politica-reintentos";
 
 /** Lista de estados posibles de una notificación. */
 export const ESTADOS_NOTIFICACION = ["PENDIENTE", "ENVIADA", "FALLIDA"] as const;
@@ -31,6 +33,13 @@ export interface DatosNotificacion {
   /** Código HTTP de la última respuesta del cliente, si respondió. */
   readonly ultimoCodigoHttp: number | null;
   readonly creadaEn: Date;
+}
+
+/** Se lanza al intentar registrar un resultado de envío en una notificación que ya no está pendiente. */
+export class NotificacionNoPendienteError extends ErrorDominio {
+  constructor(public readonly estado: string) {
+    super("NOTIFICACION_NO_PENDIENTE", `La notificación ya está ${estado} y no admite más envíos`);
+  }
 }
 
 export class Notificacion {
@@ -90,5 +99,63 @@ export class Notificacion {
   }
   get creadaEn(): Date {
     return this.datos.creadaEn;
+  }
+
+  /**
+   * Registra que el envío tuvo éxito (el cliente respondió 2xx).
+   * @returns una notificación nueva en estado ENVIADA; la original no cambia
+   * @throws NotificacionNoPendienteError si la notificación ya no estaba pendiente
+   */
+  registrarEnvio(codigoHttp: number): Notificacion {
+    this.exigirPendiente();
+    return new Notificacion({
+      ...this.datos,
+      estado: "ENVIADA",
+      intentos: this.datos.intentos + 1,
+      ultimoError: null,
+      ultimoCodigoHttp: codigoHttp,
+    });
+  }
+
+  /**
+   * Registra que el envío falló. Si todavía quedan intentos, la notificación sigue
+   * PENDIENTE y se reprograma según la política; si era el último, queda FALLIDA.
+   *
+   * @param ahora momento en que terminó el intento fallido
+   * @param motivo texto corto del fallo (sin datos del cliente)
+   * @param codigoHttp código de la respuesta, o null si el cliente no respondió
+   * @returns una notificación nueva; la original no cambia
+   * @throws NotificacionNoPendienteError si la notificación ya no estaba pendiente
+   */
+  registrarFallo(
+    ahora: Date,
+    motivo: string,
+    codigoHttp: number | null,
+    politica: PoliticaReintentos,
+  ): Notificacion {
+    this.exigirPendiente();
+    const intentos = this.datos.intentos + 1;
+    const agotada = intentos >= politica.maxIntentos;
+
+    // Espera antes del siguiente intento. Si la política tuviera menos esperas que
+    // intentos, se repite la última en lugar de fallar.
+    const esperas = politica.esperasSegundos;
+    const espera = esperas[Math.min(intentos - 1, esperas.length - 1)] ?? 0;
+
+    return new Notificacion({
+      ...this.datos,
+      estado: agotada ? "FALLIDA" : "PENDIENTE",
+      intentos,
+      proximoIntento: agotada ? this.datos.proximoIntento : new Date(ahora.getTime() + espera * 1000),
+      ultimoError: motivo,
+      ultimoCodigoHttp: codigoHttp,
+    });
+  }
+
+  /** Solo se pueden registrar resultados de envío en notificaciones pendientes. */
+  private exigirPendiente(): void {
+    if (this.datos.estado !== "PENDIENTE") {
+      throw new NotificacionNoPendienteError(this.datos.estado);
+    }
   }
 }

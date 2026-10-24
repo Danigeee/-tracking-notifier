@@ -10,11 +10,38 @@ describe("cargarConfig", () => {
   it("lee el puerto y la cadena de conexión", () => {
     const config = cargarConfig({ PORT: "4000", DATABASE_URL });
 
-    expect(config).toEqual({ puerto: 4000, databaseUrl: DATABASE_URL });
+    expect(config).toMatchObject({ puerto: 4000, databaseUrl: DATABASE_URL });
   });
 
   it("usa el puerto 3000 si no se define PORT", () => {
     expect(cargarConfig({ DATABASE_URL }).puerto).toBe(3000);
+  });
+
+  it("usa valores por defecto para el worker y el timeout del webhook", () => {
+    const config = cargarConfig({ DATABASE_URL });
+
+    expect(config.workerIntervaloMs).toBe(2000);
+    expect(config.workerTamanoLote).toBe(10);
+    expect(config.webhookTimeoutMs).toBe(5000);
+  });
+
+  it("lee el worker y el timeout desde el entorno", () => {
+    const config = cargarConfig({
+      DATABASE_URL,
+      WORKER_INTERVAL_MS: "500",
+      WORKER_BATCH_SIZE: "25",
+      WEBHOOK_TIMEOUT_MS: "3000",
+    });
+
+    expect(config.workerIntervaloMs).toBe(500);
+    expect(config.workerTamanoLote).toBe(25);
+    expect(config.webhookTimeoutMs).toBe(3000);
+  });
+
+  it("falla si los valores del worker no son válidos", () => {
+    expect(() => cargarConfig({ DATABASE_URL, WORKER_BATCH_SIZE: "0" })).toThrow(/WORKER_BATCH_SIZE/);
+    expect(() => cargarConfig({ DATABASE_URL, WORKER_INTERVAL_MS: "10" })).toThrow(/WORKER_INTERVAL_MS/);
+    expect(() => cargarConfig({ DATABASE_URL, WEBHOOK_TIMEOUT_MS: "abc" })).toThrow(/WEBHOOK_TIMEOUT_MS/);
   });
 
   it("falla si falta DATABASE_URL e indica la variable", () => {

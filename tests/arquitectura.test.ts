@@ -81,4 +81,13 @@ describe("regla de dependencias", () => {
       ),
     ).toEqual([]);
   });
+
+  it("el cliente de webhook y el worker solo dependen de dominio y aplicación", () => {
+    expect(
+      violaciones("infrastructure/webhook", ["domain", "application", "infrastructure/webhook"]),
+    ).toEqual([]);
+    expect(
+      violaciones("infrastructure/worker", ["domain", "application", "infrastructure/worker"]),
+    ).toEqual([]);
+  });
 });

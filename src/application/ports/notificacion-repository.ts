@@ -11,6 +11,27 @@ export interface ConsultaNotificaciones {
   readonly limite: number;
 }
 
+/** Parámetros para reclamar notificaciones que toca enviar. */
+export interface ReclamoNotificaciones {
+  /** Momento actual: se reclaman las que ya vencieron (`proximoIntento <= ahora`). */
+  readonly ahora: Date;
+  /** Máximo de notificaciones a reclamar. */
+  readonly limite: number;
+  /**
+   * Hasta cuándo queda reservada cada notificación reclamada. Mientras no pase ese
+   * momento, nadie más puede reclamarla. Si quien la reclamó se cae sin terminar,
+   * al vencer la reserva vuelve a estar disponible y no se pierde.
+   */
+  readonly reservarHasta: Date;
+}
+
+/** Notificación lista para enviar, junto con la URL a la que hay que enviarla. */
+export interface NotificacionPorEnviar {
+  readonly notificacion: Notificacion;
+  /** URL de webhook del tenant en el momento de reclamarla. */
+  readonly webhookUrl: string;
+}
+
 export interface NotificacionRepository {
   /** Guarda una notificación nueva. Debe usarse dentro de la misma transacción que guarda el evento. */
   crear(notificacion: Notificacion): Promise<void>;
@@ -20,4 +41,17 @@ export interface NotificacionRepository {
    * Nunca devuelve notificaciones de otros tenants.
    */
   listar(consulta: ConsultaNotificaciones): Promise<Notificacion[]>;
+
+  /**
+   * Reclama, de forma exclusiva, notificaciones PENDIENTES cuyo momento de envío
+   * ya llegó. Solo se reclaman las de tenants que tienen webhook configurado: las
+   * demás quedan pendientes, sin gastar intentos, hasta que lo configuren.
+   *
+   * Si varias instancias del servicio reclaman a la vez, ninguna notificación se
+   * entrega a dos de ellas.
+   */
+  reclamarPorEnviar(reclamo: ReclamoNotificaciones): Promise<NotificacionPorEnviar[]>;
+
+  /** Guarda el nuevo estado de una notificación existente (intentos, próximo intento, resultado). */
+  guardar(notificacion: Notificacion): Promise<void>;
 }
