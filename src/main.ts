@@ -1,7 +1,45 @@
 // Raíz de composición de la aplicación.
 //
-// Aquí se ensamblarán, en fases posteriores, los adaptadores concretos
-// (HTTP, PostgreSQL, notificador) con los casos de uso del dominio.
-// Por ahora solo marca el punto de entrada del servicio.
+// Es el único lugar que conoce todas las piezas: crea los adaptadores
+// concretos (PostgreSQL, HTTP) y los conecta con los casos de uso.
 
-export {};
+import { PrismaClient } from "@prisma/client";
+import { ConsultarHistorial } from "./application/use-cases/consultar-historial";
+import { RegistrarEvento } from "./application/use-cases/registrar-evento";
+import { cargarConfig } from "./config/config";
+import { crearApp } from "./infrastructure/http/app";
+import { GuiaRepositoryPrisma } from "./infrastructure/persistence/guia-repository-prisma";
+import { UnidadDeTrabajoPrisma } from "./infrastructure/persistence/unidad-de-trabajo-prisma";
+
+const config = cargarConfig();
+
+// Adaptadores de salida: base de datos.
+const prisma = new PrismaClient({ datasourceUrl: config.databaseUrl });
+
+// Casos de uso, conectados a sus puertos.
+const registrarEvento = new RegistrarEvento(new UnidadDeTrabajoPrisma(prisma));
+const consultarHistorial = new ConsultarHistorial(new GuiaRepositoryPrisma(prisma));
+
+// Adaptador de entrada: API HTTP.
+const app = crearApp({
+  registrarEvento,
+  consultarHistorial,
+  comprobarSalud: async () => {
+    await prisma.$queryRaw`SELECT 1`;
+  },
+  // Provisional: en una fase posterior se reemplaza por logs estructurados.
+  registrarError: (error) => console.error("Error inesperado", error),
+});
+
+const servidor = app.listen(config.puerto, () => {
+  console.log(`tracking-notifier escuchando en el puerto ${config.puerto}`);
+});
+
+// Apagado ordenado: deja de aceptar peticiones y cierra la conexión a la base.
+async function apagar(): Promise<void> {
+  servidor.close();
+  await prisma.$disconnect();
+  process.exit(0);
+}
+process.on("SIGINT", apagar);
+process.on("SIGTERM", apagar);

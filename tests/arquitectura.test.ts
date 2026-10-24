@@ -5,6 +5,8 @@
 //
 //  - El dominio no importa nada fuera del dominio (ni librerías, ni otras capas).
 //  - La aplicación solo importa dominio y aplicación (ni librerías, ni infraestructura).
+//  - Los adaptadores de infraestructura no se conocen entre sí (HTTP no importa
+//    persistencia y viceversa); solo los une la raíz de composición (main.ts).
 
 import { readdirSync, readFileSync } from "fs";
 import { dirname, join, resolve } from "path";
@@ -28,14 +30,17 @@ function importaciones(archivo: string): string[] {
 
 /**
  * Comprueba que todos los imports de una capa sean relativos y apunten solo a
- * las carpetas permitidas. Un import que no empieza por "." es una librería externa.
+ * las carpetas permitidas. Un import que no empieza por "." es una librería
+ * externa: solo se acepta si está en `librerias`.
  */
-function violaciones(carpeta: string, permitidas: string[]): string[] {
+function violaciones(carpeta: string, permitidas: string[], librerias: string[] = []): string[] {
   const errores: string[] = [];
   for (const archivo of archivosTs(carpeta)) {
     for (const destino of importaciones(archivo)) {
       if (!destino.startsWith(".")) {
-        errores.push(`${archivo} importa la librería externa "${destino}"`);
+        if (!librerias.includes(destino)) {
+          errores.push(`${archivo} importa la librería externa "${destino}"`);
+        }
         continue;
       }
       const resuelto = resolve(dirname(archivo), destino);
@@ -55,5 +60,25 @@ describe("regla de dependencias", () => {
 
   it("la aplicación solo depende del dominio y de sí misma", () => {
     expect(violaciones("application", ["domain", "application"])).toEqual([]);
+  });
+
+  it("el adaptador HTTP no depende del adaptador de persistencia", () => {
+    expect(
+      violaciones(
+        "infrastructure/http",
+        ["domain", "application", "infrastructure/http"],
+        ["express", "zod"],
+      ),
+    ).toEqual([]);
+  });
+
+  it("el adaptador de persistencia no depende del adaptador HTTP", () => {
+    expect(
+      violaciones(
+        "infrastructure/persistence",
+        ["domain", "application", "infrastructure/persistence"],
+        ["@prisma/client"],
+      ),
+    ).toEqual([]);
   });
 });

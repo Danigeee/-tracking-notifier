@@ -10,7 +10,9 @@
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",
     "db:generate": "prisma generate",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "dev": "tsx watch --env-file=.env src/main.ts",
+    "start": "node dist/main.js"
   },
   "repository": {
     "type": "git",
@@ -22,8 +24,11 @@
   "homepage": "https://github.com/Danigeee/-tracking-notifier#readme",
   "description": "Microservicio que recibe cambios de estado de guías de envío y notifica a cada cliente por webhook",
   "devDependencies": {
+    "@types/express": "^5.0.6",
     "@types/node": "^26.6.5",
+    "@types/supertest": "^7.2.1",
     "prisma": "^6.19.3",
+    "supertest": "^7.3.1",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vitest": "^5.0.5"
@@ -33,6 +38,8 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@prisma/client": "^6.19.3"
+    "@prisma/client": "^6.19.3",
+    "express": "^5.3.0",
+    "zod": "^4.6.7"
   }
 }
