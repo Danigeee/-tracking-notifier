@@ -12,7 +12,9 @@
     "db:generate": "prisma generate",
     "db:studio": "prisma studio",
     "dev": "tsx watch --env-file=.env src/main.ts",
-    "start": "node dist/main.js"
+    "start": "node dist/main.js",
+    "test:integration": "vitest run --config vitest.integration.config.mts",
+    "test:all": "npm test && npm run test:integration"
   },
   "repository": {
     "type": "git",
