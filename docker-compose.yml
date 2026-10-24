@@ -1,0 +1,24 @@
+# Entorno local de tracking-notifier.
+# Por ahora solo levanta PostgreSQL; el servicio y el webhook de prueba se agregan más adelante.
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-tracking_notifier}
+    ports:
+      # Puerto 5433 en tu máquina para no chocar con un Postgres local en el 5432
+      - "5433:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      # El contenedor se considera sano cuando Postgres acepta conexiones
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-postgres} -d $${POSTGRES_DB:-tracking_notifier}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  db-data:

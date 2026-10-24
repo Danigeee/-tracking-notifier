@@ -1,0 +1,70 @@
+// Esquema de la base de datos (PostgreSQL).
+//
+// Los modelos terminan en "Db" para distinguirlos de las entidades del dominio:
+// estos describen cómo se guardan los datos, no las reglas de negocio.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Mismos estados que el dominio (src/domain/estado-guia.ts).
+enum EstadoGuia {
+  CREADA
+  EN_RUTA
+  ENTREGADA
+  DEVUELTA
+}
+
+// Cliente de la empresa de logística. Se crea al recibir su primer evento,
+// porque el API Gateway ya validó que el tenant es legítimo.
+model TenantDb {
+  id         String   @id
+  // URL a la que se notifica a este cliente. Nula hasta que la configure.
+  webhookUrl String?  @map("webhook_url")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  guias GuiaDb[]
+
+  @@map("tenants")
+}
+
+// Guía de envío. El mismo id de guía puede existir en dos tenants distintos,
+// por eso la clave primaria incluye el tenant.
+model GuiaDb {
+  tenantId  String   @map("tenant_id")
+  id        String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  tenant  TenantDb       @relation(fields: [tenantId], references: [id])
+  eventos EventoGuiaDb[]
+
+  @@id([tenantId, id])
+  @@map("guias")
+}
+
+// Cambio de estado de una guía.
+model EventoGuiaDb {
+  tenantId    String     @map("tenant_id")
+  guiaId      String     @map("guia_id")
+  // Identificador del evento enviado por el sistema de origen (UUID).
+  eventId     String     @map("event_id")
+  estado      EstadoGuia
+  fechaEvento DateTime   @map("fecha_evento") @db.Timestamptz(3)
+  observacion String?
+  // Orden de llegada. Como el dominio rechaza eventos desordenados, coincide
+  // con el orden cronológico y desempata eventos con la misma fecha.
+  secuencia   Int        @default(autoincrement())
+  createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  guia GuiaDb @relation(fields: [tenantId, guiaId], references: [tenantId, id])
+
+  // La clave primaria también garantiza que un eventId no se repite dentro de una guía.
+  @@id([tenantId, guiaId, eventId])
+  @@index([tenantId, guiaId, secuencia])
+  @@map("eventos_guia")
+}
