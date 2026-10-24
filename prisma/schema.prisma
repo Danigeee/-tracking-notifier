@@ -30,10 +30,14 @@ enum EstadoNotificacion {
 // Cliente de la empresa de logística. Se crea al recibir su primer evento,
 // porque el API Gateway ya validó que el tenant es legítimo.
 model TenantDb {
-  id         String   @id
+  id            String   @id
   // URL a la que se notifica a este cliente. Nula hasta que la configure.
-  webhookUrl String?  @map("webhook_url")
-  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  webhookUrl    String?  @map("webhook_url")
+  // Secreto compartido con el cliente para firmar los avisos (HMAC). Se genera al configurar
+  // el webhook por primera vez y solo se muestra en ese momento. Se guarda tal cual porque
+  // hace falta para firmar; en producción debería cifrarse en reposo.
+  webhookSecret String?  @map("webhook_secret")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   guias GuiaDb[]
 

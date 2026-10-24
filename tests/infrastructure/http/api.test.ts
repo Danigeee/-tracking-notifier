@@ -9,11 +9,13 @@ import { ConsultarHistorial } from "../../../src/application/use-cases/consultar
 import { ConsultarNotificaciones } from "../../../src/application/use-cases/consultar-notificaciones";
 import { ConsultarWebhook } from "../../../src/application/use-cases/consultar-webhook";
 import { RegistrarEvento } from "../../../src/application/use-cases/registrar-evento";
+import { RotarSecretoWebhook } from "../../../src/application/use-cases/rotar-secreto-webhook";
 import { crearApp } from "../../../src/infrastructure/http/app";
 import {
   GuiaRepositoryEnMemoria,
   UnidadDeTrabajoEnMemoria,
 } from "../../support/guias-en-memoria";
+import { GeneradorSecretosFalso } from "../../support/generador-secretos-falso";
 import { NotificacionRepositoryEnMemoria } from "../../support/notificaciones-en-memoria";
 import { RelojFijo } from "../../support/reloj-fijo";
 import { WebhookConfigRepositoryEnMemoria } from "../../support/webhooks-en-memoria";
@@ -40,6 +42,7 @@ describe("API HTTP", () => {
   beforeEach(() => {
     const guias = new GuiaRepositoryEnMemoria();
     const webhooks = new WebhookConfigRepositoryEnMemoria();
+    const generadorSecretos = new GeneradorSecretosFalso();
     const notificaciones = new NotificacionRepositoryEnMemoria();
     comprobarSalud = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
     registrarError = vi.fn<(error: unknown) => void>();
@@ -50,8 +53,9 @@ describe("API HTTP", () => {
       ),
       consultarHistorial: new ConsultarHistorial(guias),
       consultarNotificaciones: new ConsultarNotificaciones(notificaciones),
-      configurarWebhook: new ConfigurarWebhook(webhooks),
+      configurarWebhook: new ConfigurarWebhook(webhooks, generadorSecretos),
       consultarWebhook: new ConsultarWebhook(webhooks),
+      rotarSecretoWebhook: new RotarSecretoWebhook(webhooks, generadorSecretos),
       comprobarSalud,
       registrarError,
     });
@@ -281,7 +285,29 @@ describe("API HTTP", () => {
       const res = await configurar(TENANT_A, { url: URL_1 });
 
       expect(res.status).toBe(200);
-      expect(res.body).toEqual({ url: URL_1 });
+      expect(res.body.url).toBe(URL_1);
+    });
+
+    it("la primera vez devuelve el secreto de firma", async () => {
+      const res = await configurar(TENANT_A, { url: URL_1 });
+
+      expect(res.body).toEqual({ url: URL_1, secreto: "secreto-1" });
+    });
+
+    it("las siguientes veces NO devuelve el secreto", async () => {
+      await configurar(TENANT_A, { url: URL_1 });
+
+      const res = await configurar(TENANT_A, { url: URL_2 });
+
+      expect(res.body).toEqual({ url: URL_2 });
+      expect(res.body).not.toHaveProperty("secreto");
+    });
+
+    it("cada tenant recibe su propio secreto", async () => {
+      const a = await configurar(TENANT_A, { url: URL_1 });
+      const b = await configurar(TENANT_B, { url: URL_1 });
+
+      expect(a.body.secreto).not.toBe(b.body.secreto);
     });
 
     it("permite consultar la URL guardada", async () => {
@@ -291,6 +317,14 @@ describe("API HTTP", () => {
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ url: URL_1 });
+    });
+
+    it("la consulta nunca muestra el secreto", async () => {
+      await configurar(TENANT_A, { url: URL_1 });
+
+      const res = await request(app).get("/webhook").set("X-Tenant-Id", TENANT_A);
+
+      expect(JSON.stringify(res.body)).not.toContain("secreto");
     });
 
     it("acepta URLs http y https", async () => {
@@ -430,6 +464,50 @@ describe("API HTTP", () => {
     });
   });
 
+  describe("POST /webhook/secreto", () => {
+    const URL_1 = "https://cliente-a.example/webhook";
+
+    /** Rota el secreto de un tenant. */
+    const rotar = (tenant: string | null) => {
+      const peticion = request(app).post("/webhook/secreto");
+      if (tenant) peticion.set("X-Tenant-Id", tenant);
+      return peticion;
+    };
+
+    it("genera un secreto nuevo, distinto del anterior, y lo devuelve", async () => {
+      const inicial = await request(app)
+        .put("/webhook")
+        .set("X-Tenant-Id", TENANT_A)
+        .send({ url: URL_1 });
+
+      const res = await rotar(TENANT_A);
+
+      expect(res.status).toBe(200);
+      expect(res.body.secreto).toBeTypeOf("string");
+      expect(res.body.secreto).not.toBe(inicial.body.secreto);
+    });
+
+    it("cada rotación da un secreto distinto", async () => {
+      await request(app).put("/webhook").set("X-Tenant-Id", TENANT_A).send({ url: URL_1 });
+
+      const primera = await rotar(TENANT_A);
+      const segunda = await rotar(TENANT_A);
+
+      expect(primera.body.secreto).not.toBe(segunda.body.secreto);
+    });
+
+    it("404 si el tenant no configuró su webhook", async () => {
+      const res = await rotar(TENANT_A);
+
+      expect(res.status).toBe(404);
+      expect(res.body.error.codigo).toBe("WEBHOOK_NO_CONFIGURADO");
+    });
+
+    it("400 sin cabecera X-Tenant-Id", async () => {
+      expect((await rotar(null)).status).toBe(400);
+    });
+  });
+
   describe("GET /health", () => {
     it("responde 200 si la base responde", async () => {
       const res = await request(app).get("/health");
@@ -463,6 +541,7 @@ describe("API HTTP", () => {
         consultarHistorial: { ejecutar: vi.fn() },
         consultarNotificaciones: { ejecutar: vi.fn() },
         configurarWebhook: { ejecutar: vi.fn() },
+        rotarSecretoWebhook: { ejecutar: vi.fn() },
         consultarWebhook: { ejecutar: vi.fn() },
         comprobarSalud,
         registrarError,

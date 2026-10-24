@@ -19,6 +19,8 @@ const TENANT_A = "tenant-a";
 const TENANT_B = "tenant-b";
 const URL_A = "https://cliente-a.example/webhook";
 const URL_B = "https://cliente-b.example/hook";
+const SECRETO_A = "secreto-del-tenant-a";
+const SECRETO_B = "secreto-del-tenant-b";
 
 describe("EnviarNotificacionesPendientes", () => {
   let webhooks: WebhookConfigRepositoryEnMemoria;
@@ -45,8 +47,8 @@ describe("EnviarNotificacionesPendientes", () => {
   // Cada prueba arranca con el tenant A y el B con webhook, y sin notificaciones.
   beforeEach(async () => {
     webhooks = new WebhookConfigRepositoryEnMemoria();
-    await webhooks.guardar(TENANT_A, URL_A);
-    await webhooks.guardar(TENANT_B, URL_B);
+    await webhooks.guardar(TENANT_A, URL_A, SECRETO_A);
+    await webhooks.guardar(TENANT_B, URL_B, SECRETO_B);
     repositorio = new NotificacionRepositoryEnMemoria(webhooks);
     reloj = new RelojFijo();
     cliente = new ClienteWebhookFalso();
@@ -267,7 +269,7 @@ describe("EnviarNotificacionesPendientes", () => {
       await enviar.ejecutar();
       reloj.avanzar(3600); // pasa mucho tiempo sin webhook
 
-      await webhooks.guardar("tenant-nuevo", "https://nuevo.example/hook");
+      await webhooks.guardar("tenant-nuevo", "https://nuevo.example/hook", "secreto-nuevo");
       const resumen = await enviar.ejecutar();
 
       expect(resumen.enviadas).toBe(2);

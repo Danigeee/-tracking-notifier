@@ -10,6 +10,7 @@ import { ConsultarNotificaciones } from "./application/use-cases/consultar-notif
 import { ConsultarWebhook } from "./application/use-cases/consultar-webhook";
 import { EnviarNotificacionesPendientes } from "./application/use-cases/enviar-notificaciones-pendientes";
 import { RegistrarEvento } from "./application/use-cases/registrar-evento";
+import { RotarSecretoWebhook } from "./application/use-cases/rotar-secreto-webhook";
 import { cargarConfig } from "./config/config";
 import { crearApp } from "./infrastructure/http/app";
 import { GuiaRepositoryPrisma } from "./infrastructure/persistence/guia-repository-prisma";
@@ -18,6 +19,7 @@ import { UnidadDeTrabajoPrisma } from "./infrastructure/persistence/unidad-de-tr
 import { WebhookConfigRepositoryPrisma } from "./infrastructure/persistence/webhook-config-repository-prisma";
 import { RelojSistema } from "./infrastructure/reloj/reloj-sistema";
 import { ClienteWebhookHttp } from "./infrastructure/webhook/cliente-webhook-http";
+import { GeneradorSecretosCrypto } from "./infrastructure/webhook/generador-secretos-crypto";
 import { WorkerNotificaciones } from "./infrastructure/worker/worker-notificaciones";
 
 const config = cargarConfig();
@@ -38,7 +40,9 @@ const enviarNotificaciones = new EnviarNotificacionesPendientes(
   { tamanoLote: config.workerTamanoLote },
 );
 const webhooks = new WebhookConfigRepositoryPrisma(prisma);
-const configurarWebhook = new ConfigurarWebhook(webhooks);
+const generadorSecretos = new GeneradorSecretosCrypto();
+const configurarWebhook = new ConfigurarWebhook(webhooks, generadorSecretos);
+const rotarSecretoWebhook = new RotarSecretoWebhook(webhooks, generadorSecretos);
 const consultarWebhook = new ConsultarWebhook(webhooks);
 
 // Adaptador de entrada: API HTTP.
@@ -48,6 +52,7 @@ const app = crearApp({
   consultarNotificaciones,
   configurarWebhook,
   consultarWebhook,
+  rotarSecretoWebhook,
   comprobarSalud: async () => {
     await prisma.$queryRaw`SELECT 1`;
   },

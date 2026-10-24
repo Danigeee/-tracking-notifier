@@ -7,6 +7,7 @@ import { ConsultarHistorial } from "../../application/use-cases/consultar-histor
 import { ConsultarNotificaciones } from "../../application/use-cases/consultar-notificaciones";
 import { ConsultarWebhook } from "../../application/use-cases/consultar-webhook";
 import { RegistrarEvento } from "../../application/use-cases/registrar-evento";
+import { RotarSecretoWebhook } from "../../application/use-cases/rotar-secreto-webhook";
 import { respuestaNoEncontrada, traducirError } from "./errores-http";
 import {
   esquemaConsultaNotificaciones,
@@ -24,6 +25,7 @@ export interface DependenciasApp {
   readonly consultarNotificaciones: Pick<ConsultarNotificaciones, "ejecutar">;
   readonly configurarWebhook: Pick<ConfigurarWebhook, "ejecutar">;
   readonly consultarWebhook: Pick<ConsultarWebhook, "ejecutar">;
+  readonly rotarSecretoWebhook: Pick<RotarSecretoWebhook, "ejecutar">;
   /** Comprueba que las dependencias externas (base de datos) responden; lanza error si no. */
   readonly comprobarSalud: () => Promise<void>;
   /** Se llama con los errores inesperados (500) para registrarlos. */
@@ -97,13 +99,18 @@ export function crearApp(dependencias: DependenciasApp): Express {
   });
 
   // Configurar la URL del webhook del cliente.
+  // La primera vez, la respuesta incluye además el secreto de firma: es la única ocasión
+  // en que se muestra. En las siguientes configuraciones solo se actualiza la URL.
   app.put("/webhook", async (req, res) => {
     const tenantId = leerTenantId(req);
     const { url } = validar(esquemaWebhook, req.body, "cuerpo");
 
-    const guardada = await dependencias.configurarWebhook.ejecutar({ tenantId, url });
+    const { url: guardada, secreto } = await dependencias.configurarWebhook.ejecutar({
+      tenantId,
+      url,
+    });
 
-    res.json({ url: guardada });
+    res.json({ url: guardada, ...(secreto !== null && { secreto }) });
   });
 
   // Consultar la URL del webhook del cliente.
@@ -113,6 +120,15 @@ export function crearApp(dependencias: DependenciasApp): Express {
     const url = await dependencias.consultarWebhook.ejecutar({ tenantId });
 
     res.json({ url });
+  });
+
+  // Genera un secreto de firma nuevo. El anterior deja de servir. Se muestra una sola vez.
+  app.post("/webhook/secreto", async (req, res) => {
+    const tenantId = leerTenantId(req);
+
+    const secreto = await dependencias.rotarSecretoWebhook.ejecutar({ tenantId });
+
+    res.json({ secreto });
   });
 
   // Notificaciones del cliente, con filtro opcional por estado (por ejemplo ?estado=FALLIDA).

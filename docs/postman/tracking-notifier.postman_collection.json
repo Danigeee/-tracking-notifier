@@ -5,9 +5,18 @@
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    { "key": "baseUrl", "value": "http://localhost:3000" },
-    { "key": "tenant", "value": "cliente-demo" },
-    { "key": "guia", "value": "GUIA-100" }
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "tenant",
+      "value": "cliente-demo"
+    },
+    {
+      "key": "guia",
+      "value": "GUIA-100"
+    }
   ],
   "item": [
     {
@@ -18,18 +27,34 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "X-Tenant-Id", "value": "{{tenant}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{tenant}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"eventId\": \"{{$guid}}\",\n  \"estado\": \"CREADA\",\n  \"fechaEvento\": \"{{$isoTimestamp}}\",\n  \"observacion\": \"Recibida en bodega\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/guias/{{guia}}/eventos",
-              "host": ["{{baseUrl}}"],
-              "path": ["guias", "{{guia}}", "eventos"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "guias",
+                "{{guia}}",
+                "eventos"
+              ]
             }
           }
         },
@@ -38,18 +63,34 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "X-Tenant-Id", "value": "{{tenant}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{tenant}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"eventId\": \"{{$guid}}\",\n  \"estado\": \"EN_RUTA\",\n  \"fechaEvento\": \"{{$isoTimestamp}}\",\n  \"observacion\": \"Salió de la bodega\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/guias/{{guia}}/eventos",
-              "host": ["{{baseUrl}}"],
-              "path": ["guias", "{{guia}}", "eventos"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "guias",
+                "{{guia}}",
+                "eventos"
+              ]
             }
           }
         },
@@ -58,18 +99,34 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "X-Tenant-Id", "value": "{{tenant}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{tenant}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"eventId\": \"{{$guid}}\",\n  \"estado\": \"ENTREGADA\",\n  \"fechaEvento\": \"{{$isoTimestamp}}\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/guias/{{guia}}/eventos",
-              "host": ["{{baseUrl}}"],
-              "path": ["guias", "{{guia}}", "eventos"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "guias",
+                "{{guia}}",
+                "eventos"
+              ]
             }
           }
         },
@@ -78,18 +135,34 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "X-Tenant-Id", "value": "{{tenant}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{tenant}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"eventId\": \"{{$guid}}\",\n  \"estado\": \"DEVUELTA\",\n  \"fechaEvento\": \"{{$isoTimestamp}}\",\n  \"observacion\": \"Dirección incorrecta\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/guias/{{guia}}/eventos",
-              "host": ["{{baseUrl}}"],
-              "path": ["guias", "{{guia}}", "eventos"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "guias",
+                "{{guia}}",
+                "eventos"
+              ]
             }
           }
         },
@@ -98,18 +171,34 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "X-Tenant-Id", "value": "{{tenant}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{tenant}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"eventId\": \"7c9e6679-7425-40de-944b-e07fc1f90ae7\",\n  \"estado\": \"CREADA\",\n  \"fechaEvento\": \"2026-10-24T10:00:00Z\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/guias/{{guia}}/eventos",
-              "host": ["{{baseUrl}}"],
-              "path": ["guias", "{{guia}}", "eventos"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "guias",
+                "{{guia}}",
+                "eventos"
+              ]
             }
           }
         },
@@ -117,11 +206,21 @@
           "name": "Consultar guía",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Tenant-Id", "value": "{{tenant}}" }],
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{tenant}}"
+              }
+            ],
             "url": {
               "raw": "{{baseUrl}}/guias/{{guia}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["guias", "{{guia}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "guias",
+                "{{guia}}"
+              ]
             }
           }
         }
@@ -135,18 +234,32 @@
           "request": {
             "method": "PUT",
             "header": [
-              { "key": "X-Tenant-Id", "value": "{{tenant}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{tenant}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"url\": \"http://localhost:4000/hook\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/webhook",
-              "host": ["{{baseUrl}}"],
-              "path": ["webhook"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "webhook"
+              ]
             }
           }
         },
@@ -154,11 +267,42 @@
           "name": "Consultar webhook",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Tenant-Id", "value": "{{tenant}}" }],
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{tenant}}"
+              }
+            ],
             "url": {
               "raw": "{{baseUrl}}/webhook",
-              "host": ["{{baseUrl}}"],
-              "path": ["webhook"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "webhook"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Rotar secreto del webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{tenant}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/webhook/secreto",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "webhook",
+                "secreto"
+              ]
             }
           }
         }
@@ -171,11 +315,20 @@
           "name": "Consultar notificaciones (todas)",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Tenant-Id", "value": "{{tenant}}" }],
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{tenant}}"
+              }
+            ],
             "url": {
               "raw": "{{baseUrl}}/notificaciones",
-              "host": ["{{baseUrl}}"],
-              "path": ["notificaciones"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notificaciones"
+              ]
             }
           }
         },
@@ -183,12 +336,26 @@
           "name": "Consultar notificaciones - PENDIENTE",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Tenant-Id", "value": "{{tenant}}" }],
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{tenant}}"
+              }
+            ],
             "url": {
               "raw": "{{baseUrl}}/notificaciones?estado=PENDIENTE",
-              "host": ["{{baseUrl}}"],
-              "path": ["notificaciones"],
-              "query": [{ "key": "estado", "value": "PENDIENTE" }]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notificaciones"
+              ],
+              "query": [
+                {
+                  "key": "estado",
+                  "value": "PENDIENTE"
+                }
+              ]
             }
           }
         },
@@ -196,12 +363,26 @@
           "name": "Consultar notificaciones - ENVIADA",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Tenant-Id", "value": "{{tenant}}" }],
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{tenant}}"
+              }
+            ],
             "url": {
               "raw": "{{baseUrl}}/notificaciones?estado=ENVIADA",
-              "host": ["{{baseUrl}}"],
-              "path": ["notificaciones"],
-              "query": [{ "key": "estado", "value": "ENVIADA" }]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notificaciones"
+              ],
+              "query": [
+                {
+                  "key": "estado",
+                  "value": "ENVIADA"
+                }
+              ]
             }
           }
         },
@@ -209,12 +390,26 @@
           "name": "Consultar notificaciones - FALLIDA",
           "request": {
             "method": "GET",
-            "header": [{ "key": "X-Tenant-Id", "value": "{{tenant}}" }],
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{tenant}}"
+              }
+            ],
             "url": {
               "raw": "{{baseUrl}}/notificaciones?estado=FALLIDA",
-              "host": ["{{baseUrl}}"],
-              "path": ["notificaciones"],
-              "query": [{ "key": "estado", "value": "FALLIDA" }]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notificaciones"
+              ],
+              "query": [
+                {
+                  "key": "estado",
+                  "value": "FALLIDA"
+                }
+              ]
             }
           }
         }
@@ -230,8 +425,12 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/health",
-              "host": ["{{baseUrl}}"],
-              "path": ["health"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
             }
           }
         }

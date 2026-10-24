@@ -83,8 +83,13 @@ describe("regla de dependencias", () => {
   });
 
   it("el cliente de webhook y el worker solo dependen de dominio y aplicación", () => {
+    // El cliente de webhook firma y genera secretos con el módulo de criptografía de Node.
     expect(
-      violaciones("infrastructure/webhook", ["domain", "application", "infrastructure/webhook"]),
+      violaciones(
+        "infrastructure/webhook",
+        ["domain", "application", "infrastructure/webhook"],
+        ["node:crypto"],
+      ),
     ).toEqual([]);
     expect(
       violaciones("infrastructure/worker", ["domain", "application", "infrastructure/worker"]),
