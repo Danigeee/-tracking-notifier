@@ -1,0 +1,27 @@
+{
+  "name": "tracking-notifier",
+  "version": "0.1.0",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Danigeee/-tracking-notifier.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Danigeee/-tracking-notifier/issues"
+  },
+  "homepage": "https://github.com/Danigeee/-tracking-notifier#readme",
+  "description": "Microservicio que recibe cambios de estado de guías de envío y notifica a cada cliente por webhook",
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  }
+}

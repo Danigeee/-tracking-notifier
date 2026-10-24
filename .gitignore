@@ -1,0 +1,14 @@
+# Dependencias y artefactos de compilación
+node_modules
+dist
+coverage
+
+# Secretos: nunca se suben al repositorio
+.env
+.env.*
+!.env.example
+
+# Sistema operativo y editores
+.DS_Store
+Thumbs.db
+.idea
