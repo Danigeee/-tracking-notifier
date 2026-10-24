@@ -22,6 +22,40 @@ export abstract class ErrorDominio extends Error {
 }
 
 /**
+ * Se lanza cuando el primer evento de una guía no es CREADA.
+ * Las guías solo pueden nacer en ese estado.
+ */
+export class PrimerEventoInvalidoError extends ErrorDominio {
+  constructor(
+    /** Estado con el que se intentó iniciar la guía. */
+    public readonly estadoRecibido: string,
+  ) {
+    super(
+      "PRIMER_EVENTO_INVALIDO",
+      `El primer evento de una guía debe ser CREADA y se recibió ${estadoRecibido}`,
+    );
+  }
+}
+
+/**
+ * Se lanza cuando llega un evento con una fecha anterior a la del último
+ * evento ya aceptado de la guía (llegó desordenado).
+ */
+export class EventoFueraDeOrdenError extends ErrorDominio {
+  constructor(
+    /** Fecha del evento rechazado, en formato ISO 8601. */
+    public readonly fechaEvento: string,
+    /** Fecha del último evento aceptado, en formato ISO 8601. */
+    public readonly fechaUltimoEvento: string,
+  ) {
+    super(
+      "EVENTO_FUERA_DE_ORDEN",
+      `El evento con fecha ${fechaEvento} es anterior al último evento aceptado (${fechaUltimoEvento})`,
+    );
+  }
+}
+
+/**
  * Se lanza cuando se intenta pasar una guía de un estado a otro que las reglas
  * no permiten (por ejemplo, cambiar una guía que ya fue ENTREGADA).
  */
