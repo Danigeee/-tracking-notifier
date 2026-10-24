@@ -118,6 +118,36 @@ describe("EnviarNotificacionesPendientes", () => {
       expect(urls.get("a1")).toBe(URL_A);
       expect(urls.get("b1")).toBe(URL_B);
     });
+
+    it("cada aviso se firma con el secreto de su tenant", async () => {
+      await crearNotificacion("a1", TENANT_A);
+      await crearNotificacion("b1", TENANT_B);
+
+      await enviar.ejecutar();
+
+      const secretos = new Map(cliente.llamadas.map((l) => [l.payload.eventId, l.secreto]));
+      expect(secretos.get("a1")).toBe(SECRETO_A);
+      expect(secretos.get("b1")).toBe(SECRETO_B);
+    });
+
+    it("usa el secreto vigente: tras rotarlo, los avisos nuevos se firman con el nuevo", async () => {
+      await crearNotificacion("a1", TENANT_A);
+      await enviar.ejecutar();
+
+      await webhooks.rotarSecreto(TENANT_A, "secreto-rotado");
+      await crearNotificacion("a2", TENANT_A);
+      await enviar.ejecutar();
+
+      expect(cliente.llamadas.map((l) => l.secreto)).toEqual([SECRETO_A, "secreto-rotado"]);
+    });
+
+    it("el secreto no forma parte del mensaje que recibe el cliente", async () => {
+      await crearNotificacion("a1", TENANT_A);
+
+      await enviar.ejecutar();
+
+      expect(JSON.stringify(cliente.llamadas[0]?.payload)).not.toContain(SECRETO_A);
+    });
   });
 
   describe("fallos y reintentos", () => {

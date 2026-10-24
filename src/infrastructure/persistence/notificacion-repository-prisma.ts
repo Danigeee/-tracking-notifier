@@ -56,7 +56,13 @@ export class NotificacionRepositoryPrisma implements NotificacionRepository {
     //    subconsulta; si se filtrara después, esas filas ocuparían el LIMIT y bloquearían
     //    a los demás clientes.
     const reclamadas = await this.cliente.$queryRaw<
-      { tenant_id: string; guia_id: string; event_id: string; webhook_url: string }[]
+      {
+        tenant_id: string;
+        guia_id: string;
+        event_id: string;
+        webhook_url: string;
+        webhook_secret: string;
+      }[]
     >`
       UPDATE notificaciones AS n
       SET proximo_intento = ${reclamo.reservarHasta}::timestamptz,
@@ -70,11 +76,12 @@ export class NotificacionRepositoryPrisma implements NotificacionRepository {
           WHERE n2.estado = 'PENDIENTE'
             AND n2.proximo_intento <= ${reclamo.ahora}::timestamptz
             AND t2.webhook_url IS NOT NULL
+            AND t2.webhook_secret IS NOT NULL
           ORDER BY n2.proximo_intento
           LIMIT ${reclamo.limite}
           FOR UPDATE OF n2 SKIP LOCKED
         )
-      RETURNING n.tenant_id, n.guia_id, n.event_id, t.webhook_url`;
+      RETURNING n.tenant_id, n.guia_id, n.event_id, t.webhook_url, t.webhook_secret`;
 
     if (reclamadas.length === 0) {
       return [];
@@ -87,12 +94,21 @@ export class NotificacionRepositoryPrisma implements NotificacionRepository {
       },
       include: { evento: true },
     });
-    const urls = new Map(reclamadas.map((r) => [`${r.tenant_id}|${r.guia_id}|${r.event_id}`, r.webhook_url]));
+    const destinos = new Map(
+      reclamadas.map((r) => [
+        `${r.tenant_id}|${r.guia_id}|${r.event_id}`,
+        { url: r.webhook_url, secreto: r.webhook_secret },
+      ]),
+    );
 
-    return filas.map((fila) => ({
-      notificacion: aNotificacion(fila),
-      webhookUrl: urls.get(`${fila.tenantId}|${fila.guiaId}|${fila.eventId}`)!,
-    }));
+    return filas.map((fila) => {
+      const destino = destinos.get(`${fila.tenantId}|${fila.guiaId}|${fila.eventId}`)!;
+      return {
+        notificacion: aNotificacion(fila),
+        webhookUrl: destino.url,
+        webhookSecreto: destino.secreto,
+      };
+    });
   }
 
   async guardar(notificacion: Notificacion): Promise<void> {

@@ -10,6 +10,8 @@ import {
 export interface LlamadaWebhook {
   readonly url: string;
   readonly payload: PayloadWebhook;
+  /** Secreto con el que se pidió firmar el aviso. */
+  readonly secreto: string;
 }
 
 /** Cómo responde el cliente falso: un resultado, o una función que lo calcula (puede ser asíncrona o lanzar). */
@@ -39,8 +41,8 @@ export class ClienteWebhookFalso implements ClienteWebhook {
     return this;
   }
 
-  async enviar(url: string, payload: PayloadWebhook): Promise<ResultadoEnvio> {
-    const llamada = { url, payload };
+  async enviar(url: string, payload: PayloadWebhook, secreto: string): Promise<ResultadoEnvio> {
+    const llamada = { url, payload, secreto };
     this.llamadas.push(llamada);
     const respuesta = this.cola.shift() ?? this.porDefecto;
     return typeof respuesta === "function" ? respuesta(llamada) : respuesta;

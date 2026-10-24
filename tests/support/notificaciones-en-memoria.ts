@@ -6,18 +6,18 @@ import {
   NotificacionRepository,
   ReclamoNotificaciones,
 } from "../../src/application/ports/notificacion-repository";
-import { WebhookConfigRepository } from "../../src/application/ports/webhook-config-repository";
 import { Notificacion } from "../../src/domain/notificacion";
+import { WebhookConfigRepositoryEnMemoria } from "./webhooks-en-memoria";
 
 export class NotificacionRepositoryEnMemoria implements NotificacionRepository {
   /** Notificaciones en orden de creación. */
   private almacen: Notificacion[] = [];
 
   /**
-   * @param webhooks de dónde sale la URL de cada tenant; sin ellos, ningún tenant
-   *        tiene webhook y `reclamarPorEnviar` no reclama nada.
+   * @param webhooks de dónde salen la URL y el secreto de cada tenant; sin ellos, ningún
+   *        tenant tiene webhook y `reclamarPorEnviar` no reclama nada.
    */
-  constructor(private readonly webhooks?: WebhookConfigRepository) {}
+  constructor(private readonly webhooks?: WebhookConfigRepositoryEnMemoria) {}
 
   async crear(notificacion: Notificacion): Promise<void> {
     this.almacen.push(notificacion);
@@ -35,9 +35,11 @@ export class NotificacionRepositoryEnMemoria implements NotificacionRepository {
     // Primero se consultan las URL (aquí hay esperas); después, sin ninguna espera de
     // por medio, se eligen y reservan las notificaciones. Así la reserva es atómica,
     // igual que la sentencia UPDATE de la base de datos real.
-    const urls = new Map<string, string | null>();
+    const destinos = new Map<string, { url: string; secreto: string } | null>();
     for (const tenantId of new Set(this.almacen.map((n) => n.tenantId))) {
-      urls.set(tenantId, (await this.webhooks?.obtener(tenantId)) ?? null);
+      const url = await this.webhooks?.obtener(tenantId);
+      const secreto = this.webhooks?.secretoDe(tenantId);
+      destinos.set(tenantId, url && secreto ? { url, secreto } : null);
     }
 
     const reclamadas: NotificacionPorEnviar[] = [];
@@ -47,8 +49,8 @@ export class NotificacionRepositoryEnMemoria implements NotificacionRepository {
       if (n.estado !== "PENDIENTE" || n.proximoIntento > reclamo.ahora) continue;
 
       // Sin webhook configurado la notificación se deja como está.
-      const webhookUrl = urls.get(n.tenantId);
-      if (!webhookUrl) continue;
+      const destino = destinos.get(n.tenantId);
+      if (!destino) continue;
 
       // Se reserva: su próximo intento pasa al final de la reserva.
       const reservada = Notificacion.reconstruir({
@@ -63,7 +65,11 @@ export class NotificacionRepositoryEnMemoria implements NotificacionRepository {
         creadaEn: n.creadaEn,
       });
       this.reemplazar(reservada);
-      reclamadas.push({ notificacion: reservada, webhookUrl });
+      reclamadas.push({
+        notificacion: reservada,
+        webhookUrl: destino.url,
+        webhookSecreto: destino.secreto,
+      });
     }
     return reclamadas;
   }

@@ -25,11 +25,13 @@ export interface ReclamoNotificaciones {
   readonly reservarHasta: Date;
 }
 
-/** Notificación lista para enviar, junto con la URL a la que hay que enviarla. */
+/** Notificación lista para enviar, junto con la URL y el secreto de firma de su tenant. */
 export interface NotificacionPorEnviar {
   readonly notificacion: Notificacion;
   /** URL de webhook del tenant en el momento de reclamarla. */
   readonly webhookUrl: string;
+  /** Secreto con el que se firma el aviso, vigente al reclamarla. */
+  readonly webhookSecreto: string;
 }
 
 export interface NotificacionRepository {
@@ -44,8 +46,8 @@ export interface NotificacionRepository {
 
   /**
    * Reclama, de forma exclusiva, notificaciones PENDIENTES cuyo momento de envío
-   * ya llegó. Solo se reclaman las de tenants que tienen webhook configurado: las
-   * demás quedan pendientes, sin gastar intentos, hasta que lo configuren.
+   * ya llegó. Solo se reclaman las de tenants que tienen webhook configurado (URL y
+   * secreto): las demás quedan pendientes, sin gastar intentos, hasta que lo configuren.
    *
    * Si varias instancias del servicio reclaman a la vez, ninguna notificación se
    * entrega a dos de ellas.

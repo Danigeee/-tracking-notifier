@@ -87,8 +87,12 @@ export class EnviarNotificacionesPendientes {
   }
 
   /** Entrega una notificación y guarda su nuevo estado. */
-  private async procesar({ notificacion, webhookUrl }: NotificacionPorEnviar): Promise<Notificacion> {
-    const resultado = await this.entregar(notificacion, webhookUrl);
+  private async procesar({
+    notificacion,
+    webhookUrl,
+    webhookSecreto,
+  }: NotificacionPorEnviar): Promise<Notificacion> {
+    const resultado = await this.entregar(notificacion, webhookUrl, webhookSecreto);
 
     // La hora se toma después del envío: la espera del reintento cuenta desde que terminó.
     const actualizada = resultado.exito
@@ -105,9 +109,17 @@ export class EnviarNotificacionesPendientes {
   }
 
   /** Llama al cliente de webhook. Un error inesperado se trata como un intento fallido más. */
-  private async entregar(notificacion: Notificacion, webhookUrl: string): Promise<ResultadoEnvio> {
+  private async entregar(
+    notificacion: Notificacion,
+    webhookUrl: string,
+    webhookSecreto: string,
+  ): Promise<ResultadoEnvio> {
     try {
-      return await this.clienteWebhook.enviar(webhookUrl, this.construirPayload(notificacion));
+      return await this.clienteWebhook.enviar(
+        webhookUrl,
+        this.construirPayload(notificacion),
+        webhookSecreto,
+      );
     } catch {
       return { exito: false, motivo: "error inesperado al enviar", codigoHttp: null };
     }

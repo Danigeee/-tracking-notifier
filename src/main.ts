@@ -35,7 +35,7 @@ const notificaciones = new NotificacionRepositoryPrisma(prisma);
 const consultarNotificaciones = new ConsultarNotificaciones(notificaciones);
 const enviarNotificaciones = new EnviarNotificacionesPendientes(
   notificaciones,
-  new ClienteWebhookHttp(config.webhookTimeoutMs),
+  new ClienteWebhookHttp(config.webhookTimeoutMs, reloj),
   reloj,
   { tamanoLote: config.workerTamanoLote },
 );
