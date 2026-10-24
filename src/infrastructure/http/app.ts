@@ -4,10 +4,12 @@
 import express, { Express, NextFunction, Request, Response } from "express";
 import { ConfigurarWebhook } from "../../application/use-cases/configurar-webhook";
 import { ConsultarHistorial } from "../../application/use-cases/consultar-historial";
+import { ConsultarNotificaciones } from "../../application/use-cases/consultar-notificaciones";
 import { ConsultarWebhook } from "../../application/use-cases/consultar-webhook";
 import { RegistrarEvento } from "../../application/use-cases/registrar-evento";
 import { respuestaNoEncontrada, traducirError } from "./errores-http";
 import {
+  esquemaConsultaNotificaciones,
   esquemaEvento,
   esquemaGuiaId,
   esquemaTenantId,
@@ -19,6 +21,7 @@ import {
 export interface DependenciasApp {
   readonly registrarEvento: Pick<RegistrarEvento, "ejecutar">;
   readonly consultarHistorial: Pick<ConsultarHistorial, "ejecutar">;
+  readonly consultarNotificaciones: Pick<ConsultarNotificaciones, "ejecutar">;
   readonly configurarWebhook: Pick<ConfigurarWebhook, "ejecutar">;
   readonly consultarWebhook: Pick<ConsultarWebhook, "ejecutar">;
   /** Comprueba que las dependencias externas (base de datos) responden; lanza error si no. */
@@ -93,7 +96,7 @@ export function crearApp(dependencias: DependenciasApp): Express {
     });
   });
 
-  // Configurar la URL del webhook del cliente (reemplaza la anterior si existía).
+  // Configurar la URL del webhook del cliente.
   app.put("/webhook", async (req, res) => {
     const tenantId = leerTenantId(req);
     const { url } = validar(esquemaWebhook, req.body, "cuerpo");
@@ -110,6 +113,32 @@ export function crearApp(dependencias: DependenciasApp): Express {
     const url = await dependencias.consultarWebhook.ejecutar({ tenantId });
 
     res.json({ url });
+  });
+
+  // Notificaciones del cliente, con filtro opcional por estado (por ejemplo ?estado=FALLIDA).
+  app.get("/notificaciones", async (req, res) => {
+    const tenantId = leerTenantId(req);
+    const { estado, limite } = validar(esquemaConsultaNotificaciones, req.query, "parámetro");
+
+    const notificaciones = await dependencias.consultarNotificaciones.ejecutar({
+      tenantId,
+      estado,
+      limite,
+    });
+
+    res.json({
+      notificaciones: notificaciones.map((n) => ({
+        guiaId: n.guiaId,
+        eventId: n.eventId,
+        estadoGuia: n.evento.estado,
+        estado: n.estado,
+        intentos: n.intentos,
+        proximoIntento: n.proximoIntento.toISOString(),
+        ultimoError: n.ultimoError,
+        ultimoCodigoHttp: n.ultimoCodigoHttp,
+        creadaEn: n.creadaEn.toISOString(),
+      })),
+    });
   });
 
   // Cualquier otra ruta: 404 con el formato de error único.

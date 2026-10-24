@@ -20,6 +20,13 @@ enum EstadoGuia {
   DEVUELTA
 }
 
+// Estado del envío de la notificación de un evento al webhook del cliente.
+enum EstadoNotificacion {
+  PENDIENTE // esperando ser enviada o reintentada
+  ENVIADA // el cliente respondió 2xx
+  FALLIDA // se agotaron los intentos
+}
+
 // Cliente de la empresa de logística. Se crea al recibir su primer evento,
 // porque el API Gateway ya validó que el tenant es legítimo.
 model TenantDb {
@@ -61,10 +68,40 @@ model EventoGuiaDb {
   secuencia   Int        @default(autoincrement())
   createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  guia GuiaDb @relation(fields: [tenantId, guiaId], references: [tenantId, id])
+  guia         GuiaDb          @relation(fields: [tenantId, guiaId], references: [tenantId, id])
+  notificacion NotificacionDb?
 
   // La clave primaria también garantiza que un eventId no se repite dentro de una guía.
   @@id([tenantId, guiaId, eventId])
   @@index([tenantId, guiaId, secuencia])
   @@map("eventos_guia")
+}
+
+// Notificación pendiente o ya enviada de un evento al webhook del cliente (patrón "outbox").
+// Se crea en la MISMA transacción que el evento, así nunca se acepta un evento sin
+// dejar registrada la notificación que le corresponde.
+model NotificacionDb {
+  tenantId         String             @map("tenant_id")
+  guiaId           String             @map("guia_id")
+  eventId          String             @map("event_id")
+  estado           EstadoNotificacion @default(PENDIENTE)
+  // Intentos de envío realizados hasta ahora.
+  intentos         Int                @default(0)
+  // Cuándo toca el próximo intento. El worker solo toma las que ya vencieron.
+  proximoIntento   DateTime           @default(now()) @map("proximo_intento") @db.Timestamptz(3)
+  // Motivo del último fallo (texto corto de nuestro cliente HTTP, nunca el cuerpo de la respuesta).
+  ultimoError      String?            @map("ultimo_error")
+  ultimoCodigoHttp Int?               @map("ultimo_codigo_http")
+  createdAt        DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  evento EventoGuiaDb @relation(fields: [tenantId, guiaId, eventId], references: [tenantId, guiaId, eventId])
+
+  // Una sola notificación por evento: la clave primaria evita duplicados.
+  @@id([tenantId, guiaId, eventId])
+  // Para que el worker encuentre rápido lo pendiente y vencido.
+  @@index([estado, proximoIntento])
+  // Para consultar las notificaciones de un cliente por estado.
+  @@index([tenantId, estado, createdAt])
+  @@map("notificaciones")
 }

@@ -5,6 +5,7 @@
 
 import { z } from "zod";
 import { ESTADOS_GUIA } from "../../domain/estado-guia";
+import { ESTADOS_NOTIFICACION } from "../../domain/notificacion";
 import { DetalleError, ErrorValidacion } from "./errores-http";
 
 // Mensajes de validación por defecto de Zod en español.
@@ -37,6 +38,13 @@ export const esquemaWebhook = z.object({
   url: z
     .url({ protocol: /^https?$/, error: "Debe ser una URL válida que empiece por http:// o https://" })
     .max(2048, "Debe tener como máximo 2048 caracteres"),
+});
+
+/** Parámetros de GET /notificaciones: filtro opcional por estado y máximo de resultados. */
+export const esquemaConsultaNotificaciones = z.object({
+  estado: z.enum(ESTADOS_NOTIFICACION, `Debe ser uno de: ${ESTADOS_NOTIFICACION.join(", ")}`).optional(),
+  // Llega como texto en la URL; se convierte a número. Por defecto 50, máximo 200.
+  limite: z.coerce.number().int().min(1).max(200).default(50),
 });
 
 /**

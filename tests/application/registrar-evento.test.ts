@@ -12,6 +12,8 @@ import {
 } from "../../src/domain/errores";
 import { EstadoGuia } from "../../src/domain/estado-guia";
 import { GuiaRepositoryEnMemoria, UnidadDeTrabajoEnMemoria } from "../support/guias-en-memoria";
+import { NotificacionRepositoryEnMemoria } from "../support/notificaciones-en-memoria";
+import { RelojFijo } from "../support/reloj-fijo";
 
 // Datos ficticios.
 const TENANT_A = "tenant-a";
@@ -36,12 +38,19 @@ function comando(
 
 describe("RegistrarEvento", () => {
   let guias: GuiaRepositoryEnMemoria;
+  let notificaciones: NotificacionRepositoryEnMemoria;
+  let reloj: RelojFijo;
   let registrarEvento: RegistrarEvento;
 
-  // Cada prueba arranca con un repositorio vacío.
+  // Cada prueba arranca con repositorios vacíos.
   beforeEach(() => {
     guias = new GuiaRepositoryEnMemoria();
-    registrarEvento = new RegistrarEvento(new UnidadDeTrabajoEnMemoria({ guias }));
+    notificaciones = new NotificacionRepositoryEnMemoria();
+    reloj = new RelojFijo();
+    registrarEvento = new RegistrarEvento(
+      new UnidadDeTrabajoEnMemoria({ guias, notificaciones }),
+      reloj,
+    );
   });
 
   it("crea la guía con un primer evento CREADA", async () => {
@@ -57,6 +66,7 @@ describe("RegistrarEvento", () => {
     );
 
     expect(guias.vecesGuardado).toBe(0);
+    expect(notificaciones.todas()).toHaveLength(0);
   });
 
   it("agrega un evento válido a una guía existente", async () => {
@@ -111,5 +121,54 @@ describe("RegistrarEvento", () => {
     // La guía del tenant A no se alteró.
     const guiaA = await guias.buscar(TENANT_A, GUIA);
     expect(guiaA?.estadoActual).toBe("EN_RUTA");
+  });
+
+  describe("notificaciones", () => {
+    it("crea una notificación pendiente por cada evento aceptado", async () => {
+      await registrarEvento.ejecutar(comando("e1", "CREADA", 0));
+      await registrarEvento.ejecutar(comando("e2", "EN_RUTA", 5));
+
+      const creadas = notificaciones.todas();
+      expect(creadas.map((n) => n.eventId)).toEqual(["e1", "e2"]);
+      expect(creadas.every((n) => n.estado === "PENDIENTE" && n.intentos === 0)).toBe(true);
+    });
+
+    it("deja la notificación asociada al tenant y a la guía del evento", async () => {
+      await registrarEvento.ejecutar(comando("e1", "CREADA", 0, TENANT_B));
+
+      const [notificacion] = notificaciones.todas();
+      expect(notificacion?.tenantId).toBe(TENANT_B);
+      expect(notificacion?.guiaId).toBe(GUIA);
+    });
+
+    it("la deja lista para enviarse en el momento actual del reloj", async () => {
+      await registrarEvento.ejecutar(comando("e1", "CREADA", 0));
+
+      const [notificacion] = notificaciones.todas();
+      expect(notificacion?.proximoIntento).toEqual(reloj.ahora());
+      expect(notificacion?.creadaEn).toEqual(reloj.ahora());
+    });
+
+    it("un evento duplicado NO crea otra notificación", async () => {
+      await registrarEvento.ejecutar(comando("e1", "CREADA", 0));
+      await registrarEvento.ejecutar(comando("e1", "CREADA", 0));
+      await registrarEvento.ejecutar(comando("e1", "CREADA", 0));
+
+      expect(notificaciones.todas()).toHaveLength(1);
+    });
+
+    it("un evento rechazado NO crea notificación", async () => {
+      await registrarEvento.ejecutar(comando("e1", "CREADA", 0));
+
+      await expect(registrarEvento.ejecutar(comando("e2", "ENTREGADA", 5))).rejects.toThrow(
+        TransicionInvalidaError,
+      );
+      await expect(registrarEvento.ejecutar(comando("e3", "EN_RUTA", -5))).rejects.toThrow(
+        EventoFueraDeOrdenError,
+      );
+
+      // Solo existe la del primer evento.
+      expect(notificaciones.todas().map((n) => n.eventId)).toEqual(["e1"]);
+    });
   });
 });

@@ -6,6 +6,7 @@ import request from "supertest";
 import { Mock, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConfigurarWebhook } from "../../../src/application/use-cases/configurar-webhook";
 import { ConsultarHistorial } from "../../../src/application/use-cases/consultar-historial";
+import { ConsultarNotificaciones } from "../../../src/application/use-cases/consultar-notificaciones";
 import { ConsultarWebhook } from "../../../src/application/use-cases/consultar-webhook";
 import { RegistrarEvento } from "../../../src/application/use-cases/registrar-evento";
 import { crearApp } from "../../../src/infrastructure/http/app";
@@ -13,6 +14,8 @@ import {
   GuiaRepositoryEnMemoria,
   UnidadDeTrabajoEnMemoria,
 } from "../../support/guias-en-memoria";
+import { NotificacionRepositoryEnMemoria } from "../../support/notificaciones-en-memoria";
+import { RelojFijo } from "../../support/reloj-fijo";
 import { WebhookConfigRepositoryEnMemoria } from "../../support/webhooks-en-memoria";
 
 // Datos ficticios.
@@ -37,11 +40,16 @@ describe("API HTTP", () => {
   beforeEach(() => {
     const guias = new GuiaRepositoryEnMemoria();
     const webhooks = new WebhookConfigRepositoryEnMemoria();
+    const notificaciones = new NotificacionRepositoryEnMemoria();
     comprobarSalud = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
     registrarError = vi.fn<(error: unknown) => void>();
     app = crearApp({
-      registrarEvento: new RegistrarEvento(new UnidadDeTrabajoEnMemoria({ guias })),
+      registrarEvento: new RegistrarEvento(
+        new UnidadDeTrabajoEnMemoria({ guias, notificaciones }),
+        new RelojFijo(),
+      ),
       consultarHistorial: new ConsultarHistorial(guias),
+      consultarNotificaciones: new ConsultarNotificaciones(notificaciones),
       configurarWebhook: new ConfigurarWebhook(webhooks),
       consultarWebhook: new ConsultarWebhook(webhooks),
       comprobarSalud,
@@ -335,6 +343,93 @@ describe("API HTTP", () => {
     });
   });
 
+  describe("GET /notificaciones", () => {
+    /** Consulta las notificaciones de un tenant, con query string opcional. */
+    const listar = (tenant: string | null, query = "") => {
+      const peticion = request(app).get(`/notificaciones${query}`);
+      if (tenant) peticion.set("X-Tenant-Id", tenant);
+      return peticion;
+    };
+
+    it("lista una notificación pendiente por cada evento aceptado", async () => {
+      await registrar(TENANT_A, "GUIA-001", cuerpo(EVENTO_1, "CREADA", 0));
+      await registrar(TENANT_A, "GUIA-001", cuerpo(EVENTO_2, "EN_RUTA", 5));
+
+      const res = await listar(TENANT_A);
+
+      expect(res.status).toBe(200);
+      expect(res.body.notificaciones).toHaveLength(2);
+      // La más reciente primero.
+      expect(res.body.notificaciones[0]).toMatchObject({
+        guiaId: "GUIA-001",
+        eventId: EVENTO_2,
+        estadoGuia: "EN_RUTA",
+        estado: "PENDIENTE",
+        intentos: 0,
+        ultimoError: null,
+        ultimoCodigoHttp: null,
+      });
+    });
+
+    it("un evento duplicado no agrega otra notificación", async () => {
+      await registrar(TENANT_A, "GUIA-001", cuerpo(EVENTO_1, "CREADA", 0));
+      await registrar(TENANT_A, "GUIA-001", cuerpo(EVENTO_1, "CREADA", 0));
+
+      const res = await listar(TENANT_A);
+
+      expect(res.body.notificaciones).toHaveLength(1);
+    });
+
+    it("un evento rechazado no genera notificación", async () => {
+      await registrar(TENANT_A, "GUIA-001", cuerpo(EVENTO_1, "EN_RUTA", 0)); // 422
+
+      const res = await listar(TENANT_A);
+
+      expect(res.body.notificaciones).toEqual([]);
+    });
+
+    it("filtra por estado", async () => {
+      await registrar(TENANT_A, "GUIA-001", cuerpo(EVENTO_1, "CREADA", 0));
+
+      expect((await listar(TENANT_A, "?estado=PENDIENTE")).body.notificaciones).toHaveLength(1);
+      expect((await listar(TENANT_A, "?estado=FALLIDA")).body.notificaciones).toEqual([]);
+    });
+
+    it("respeta el límite", async () => {
+      await registrar(TENANT_A, "GUIA-001", cuerpo(EVENTO_1, "CREADA", 0));
+      await registrar(TENANT_A, "GUIA-001", cuerpo(EVENTO_2, "EN_RUTA", 5));
+
+      const res = await listar(TENANT_A, "?limite=1");
+
+      expect(res.body.notificaciones).toHaveLength(1);
+    });
+
+    it("un tenant no ve las notificaciones de otro", async () => {
+      await registrar(TENANT_A, "GUIA-001", cuerpo(EVENTO_1, "CREADA", 0));
+
+      const res = await listar(TENANT_B);
+
+      expect(res.status).toBe(200);
+      expect(res.body.notificaciones).toEqual([]);
+    });
+
+    it.each([
+      ["un estado desconocido", "?estado=PERDIDA"],
+      ["un límite que no es número", "?limite=abc"],
+      ["un límite menor que 1", "?limite=0"],
+      ["un límite mayor que 200", "?limite=201"],
+    ])("400 con %s", async (_descripcion, query) => {
+      const res = await listar(TENANT_A, query);
+
+      expect(res.status).toBe(400);
+      expect(res.body.error.codigo).toBe("PETICION_INVALIDA");
+    });
+
+    it("400 sin cabecera X-Tenant-Id", async () => {
+      expect((await listar(null)).status).toBe(400);
+    });
+  });
+
   describe("GET /health", () => {
     it("responde 200 si la base responde", async () => {
       const res = await request(app).get("/health");
@@ -366,6 +461,7 @@ describe("API HTTP", () => {
       const appRota = crearApp({
         registrarEvento: { ejecutar: vi.fn().mockRejectedValue(new Error("password=secreta")) },
         consultarHistorial: { ejecutar: vi.fn() },
+        consultarNotificaciones: { ejecutar: vi.fn() },
         configurarWebhook: { ejecutar: vi.fn() },
         consultarWebhook: { ejecutar: vi.fn() },
         comprobarSalud,

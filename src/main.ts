@@ -6,13 +6,16 @@
 import { PrismaClient } from "@prisma/client";
 import { ConfigurarWebhook } from "./application/use-cases/configurar-webhook";
 import { ConsultarHistorial } from "./application/use-cases/consultar-historial";
+import { ConsultarNotificaciones } from "./application/use-cases/consultar-notificaciones";
 import { ConsultarWebhook } from "./application/use-cases/consultar-webhook";
 import { RegistrarEvento } from "./application/use-cases/registrar-evento";
 import { cargarConfig } from "./config/config";
 import { crearApp } from "./infrastructure/http/app";
 import { GuiaRepositoryPrisma } from "./infrastructure/persistence/guia-repository-prisma";
+import { NotificacionRepositoryPrisma } from "./infrastructure/persistence/notificacion-repository-prisma";
 import { UnidadDeTrabajoPrisma } from "./infrastructure/persistence/unidad-de-trabajo-prisma";
 import { WebhookConfigRepositoryPrisma } from "./infrastructure/persistence/webhook-config-repository-prisma";
+import { RelojSistema } from "./infrastructure/reloj/reloj-sistema";
 
 const config = cargarConfig();
 
@@ -20,8 +23,9 @@ const config = cargarConfig();
 const prisma = new PrismaClient({ datasourceUrl: config.databaseUrl });
 
 // Casos de uso, conectados a sus puertos.
-const registrarEvento = new RegistrarEvento(new UnidadDeTrabajoPrisma(prisma));
+const registrarEvento = new RegistrarEvento(new UnidadDeTrabajoPrisma(prisma), new RelojSistema());
 const consultarHistorial = new ConsultarHistorial(new GuiaRepositoryPrisma(prisma));
+const consultarNotificaciones = new ConsultarNotificaciones(new NotificacionRepositoryPrisma(prisma));
 const webhooks = new WebhookConfigRepositoryPrisma(prisma);
 const configurarWebhook = new ConfigurarWebhook(webhooks);
 const consultarWebhook = new ConsultarWebhook(webhooks);
@@ -30,6 +34,7 @@ const consultarWebhook = new ConsultarWebhook(webhooks);
 const app = crearApp({
   registrarEvento,
   consultarHistorial,
+  consultarNotificaciones,
   configurarWebhook,
   consultarWebhook,
   comprobarSalud: async () => {

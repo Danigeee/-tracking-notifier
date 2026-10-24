@@ -3,6 +3,8 @@
 import { EstadoGuia } from "../../domain/estado-guia";
 import { EventoGuia } from "../../domain/evento-guia";
 import { Guia, ResultadoRegistro } from "../../domain/guia";
+import { Notificacion } from "../../domain/notificacion";
+import { Reloj } from "../ports/reloj";
 import { UnidadDeTrabajo } from "../ports/unidad-de-trabajo";
 
 /** Datos necesarios para registrar un evento. Llegan ya validados desde la capa de entrada. */
@@ -27,11 +29,15 @@ export interface RegistrarEventoResultado {
 }
 
 export class RegistrarEvento {
-  constructor(private readonly unidadDeTrabajo: UnidadDeTrabajo) {}
+  constructor(
+    private readonly unidadDeTrabajo: UnidadDeTrabajo,
+    private readonly reloj: Reloj,
+  ) {}
 
   /**
    * Registra el evento en la guía del tenant. Si la guía no existe, la crea
-   * (el primer evento debe ser CREADA). Todo ocurre dentro de una transacción.
+   * (el primer evento debe ser CREADA). Por cada evento aceptado deja creada su
+   * notificación pendiente. Todo ocurre en una sola transacción.
    *
    * @throws PrimerEventoInvalidoError, EventoFueraDeOrdenError o
    *         TransicionInvalidaError si se incumple alguna regla del dominio.
@@ -44,22 +50,28 @@ export class RegistrarEvento {
       observacion: comando.observacion,
     };
 
-    return this.unidadDeTrabajo.ejecutar(async ({ guias }) => {
+    return this.unidadDeTrabajo.ejecutar(async ({ guias, notificaciones }) => {
       const existente = await guias.buscar(comando.tenantId, comando.guiaId);
 
       // Guía nueva: nace con este evento (lanza error si no es CREADA).
       if (!existente) {
         const guia = Guia.iniciar(comando.guiaId, comando.tenantId, evento);
         await guias.guardar(guia);
+        await notificaciones.crear(
+          Notificacion.crear(comando.tenantId, comando.guiaId, evento, this.reloj.ahora()),
+        );
         return { resultado: "REGISTRADO", estadoActual: guia.estadoActual };
       }
 
       // Guía existente: el dominio decide si es nuevo, duplicado o inválido.
       const resultado = existente.registrarEvento(evento);
 
-      // Un duplicado no cambia nada, así que no se guarda de nuevo.
+      // Un duplicado no cambia nada: no se guarda ni se crea otra notificación.
       if (resultado === "REGISTRADO") {
         await guias.guardar(existente);
+        await notificaciones.crear(
+          Notificacion.crear(comando.tenantId, comando.guiaId, evento, this.reloj.ahora()),
+        );
       }
       return { resultado, estadoActual: existente.estadoActual };
     });

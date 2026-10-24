@@ -6,6 +6,7 @@ import {
   UnidadDeTrabajo,
 } from "../../application/ports/unidad-de-trabajo";
 import { GuiaRepositoryPrisma } from "./guia-repository-prisma";
+import { NotificacionRepositoryPrisma } from "./notificacion-repository-prisma";
 
 export class UnidadDeTrabajoPrisma implements UnidadDeTrabajo {
   constructor(private readonly prisma: PrismaClient) {}
@@ -17,6 +18,8 @@ export class UnidadDeTrabajoPrisma implements UnidadDeTrabajo {
       trabajo({
         // Dentro de la transacción las guías se bloquean al buscarlas.
         guias: new GuiaRepositoryPrisma(tx, true),
+        // Las notificaciones usan la misma transacción que las guías.
+        notificaciones: new NotificacionRepositoryPrisma(tx),
       }),
     );
   }
