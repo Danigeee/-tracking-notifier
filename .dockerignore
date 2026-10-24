@@ -1,0 +1,21 @@
+# Lo que NO se envía a Docker al construir la imagen.
+# Reduce el tamaño del contexto y evita que entren secretos o archivos innecesarios.
+
+node_modules
+dist
+coverage
+.git
+.github
+
+# Secretos y configuración local: nunca deben entrar a una imagen
+.env
+.env.*
+
+# No hacen falta para ejecutar el servicio
+tests
+docs
+webhook-prueba
+*.md
+Dockerfile
+docker-compose.yml
+.dockerignore

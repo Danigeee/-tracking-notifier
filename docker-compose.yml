@@ -1,5 +1,12 @@
-# Entorno local de tracking-notifier.
-# Por ahora solo levanta PostgreSQL; el servicio y el webhook de prueba se agregan más adelante.
+# Entorno completo de tracking-notifier: `docker compose up` levanta todo.
+#
+#   db            PostgreSQL
+#   migraciones   aplica las migraciones a la base y termina
+#   app           el servicio (API + worker de notificaciones)
+#   webhook       "sistema del cliente" de prueba: imprime los avisos que recibe
+#
+# Los valores por defecto sirven para desarrollo local. Para cambiarlos, define las variables
+# de entorno o crea un archivo .env (ver .env.example). Ningún secreto vive en este archivo.
 
 services:
   db:
@@ -10,7 +17,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-tracking_notifier}
     ports:
       # Puerto 5433 en tu máquina para no chocar con un Postgres local en el 5432
-      - "5433:5432"
+      - "${DB_PORT:-5433}:5432"
     volumes:
       - db-data:/var/lib/postgresql/data
     healthcheck:
@@ -19,6 +26,55 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  # Aplica las migraciones y termina. El servicio no arranca hasta que esto acabe bien.
+  migraciones:
+    build:
+      context: .
+      # La etapa "build" incluye la herramienta de Prisma, que la imagen final no lleva.
+      target: build
+    command: ["npx", "prisma", "migrate", "deploy"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-tracking_notifier}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  app:
+    build:
+      context: .
+      target: runtime
+    environment:
+      PORT: 3000
+      # Dentro de la red de Docker la base se llama "db" y escucha en el puerto 5432.
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-tracking_notifier}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      WORKER_INTERVAL_MS: ${WORKER_INTERVAL_MS:-2000}
+      WORKER_BATCH_SIZE: ${WORKER_BATCH_SIZE:-10}
+      WEBHOOK_TIMEOUT_MS: ${WEBHOOK_TIMEOUT_MS:-5000}
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    depends_on:
+      migraciones:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  # Webhook de prueba. Para que el servicio le envíe avisos, el cliente configura:
+  #   PUT /webhook  {"url": "http://webhook:4000/hook"}
+  webhook:
+    build:
+      context: ./webhook-prueba
+    environment:
+      PORT: 4000
+      # Opcional: con el secreto que devuelve PUT /webhook, el webhook verifica la firma de los avisos.
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:-}
+      STATUS: ${WEBHOOK_STATUS:-200}
+      FAIL_FIRST: ${WEBHOOK_FAIL_FIRST:-0}
+      DELAY_MS: ${WEBHOOK_DELAY_MS:-0}
+    ports:
+      - "${WEBHOOK_PORT:-4000}:4000"
+    restart: unless-stopped
 
 volumes:
   db-data:
