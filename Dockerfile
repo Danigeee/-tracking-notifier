@@ -17,7 +17,9 @@ RUN apt-get update \
 # Primero solo los archivos de dependencias: mientras no cambien, Docker reutiliza esta capa
 # y no vuelve a descargar todo en cada compilación.
 COPY package.json package-lock.json ./
-RUN npm ci
+# --ignore-scripts: el script "postinstall" del proyecto genera el cliente de Prisma, pero en este
+# punto todavía no está copiado el esquema. Se genera más abajo, de forma explícita.
+RUN npm ci --ignore-scripts
 
 # Esquema y migraciones de la base de datos; con el esquema se genera el cliente de Prisma.
 COPY prisma ./prisma
@@ -43,7 +45,8 @@ RUN apt-get update \
 # --omit=optional es necesario: Prisma y TypeScript figuran en el lockfile como pares opcionales
 # de @prisma/client y, sin esta opción, npm los instalaría también en la imagen final.
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev --omit=optional && npm cache clean --force
+# --ignore-scripts por la misma razón: aquí no hay herramienta de Prisma; el cliente ya generado se copia abajo.
+RUN npm ci --omit=dev --omit=optional --ignore-scripts && npm cache clean --force
 
 # Del paso anterior: el cliente de Prisma ya generado y el código compilado.
 COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
