@@ -4,12 +4,15 @@
 // concretos (PostgreSQL, HTTP) y los conecta con los casos de uso.
 
 import { PrismaClient } from "@prisma/client";
+import { ConfigurarWebhook } from "./application/use-cases/configurar-webhook";
 import { ConsultarHistorial } from "./application/use-cases/consultar-historial";
+import { ConsultarWebhook } from "./application/use-cases/consultar-webhook";
 import { RegistrarEvento } from "./application/use-cases/registrar-evento";
 import { cargarConfig } from "./config/config";
 import { crearApp } from "./infrastructure/http/app";
 import { GuiaRepositoryPrisma } from "./infrastructure/persistence/guia-repository-prisma";
 import { UnidadDeTrabajoPrisma } from "./infrastructure/persistence/unidad-de-trabajo-prisma";
+import { WebhookConfigRepositoryPrisma } from "./infrastructure/persistence/webhook-config-repository-prisma";
 
 const config = cargarConfig();
 
@@ -19,11 +22,16 @@ const prisma = new PrismaClient({ datasourceUrl: config.databaseUrl });
 // Casos de uso, conectados a sus puertos.
 const registrarEvento = new RegistrarEvento(new UnidadDeTrabajoPrisma(prisma));
 const consultarHistorial = new ConsultarHistorial(new GuiaRepositoryPrisma(prisma));
+const webhooks = new WebhookConfigRepositoryPrisma(prisma);
+const configurarWebhook = new ConfigurarWebhook(webhooks);
+const consultarWebhook = new ConsultarWebhook(webhooks);
 
 // Adaptador de entrada: API HTTP.
 const app = crearApp({
   registrarEvento,
   consultarHistorial,
+  configurarWebhook,
+  consultarWebhook,
   comprobarSalud: async () => {
     await prisma.$queryRaw`SELECT 1`;
   },

@@ -2,15 +2,25 @@
 // Recibe peticiones, las valida y llama a los casos de uso. No contiene reglas de negocio.
 
 import express, { Express, NextFunction, Request, Response } from "express";
+import { ConfigurarWebhook } from "../../application/use-cases/configurar-webhook";
 import { ConsultarHistorial } from "../../application/use-cases/consultar-historial";
+import { ConsultarWebhook } from "../../application/use-cases/consultar-webhook";
 import { RegistrarEvento } from "../../application/use-cases/registrar-evento";
 import { respuestaNoEncontrada, traducirError } from "./errores-http";
-import { esquemaEvento, esquemaGuiaId, esquemaTenantId, validar } from "./esquemas";
+import {
+  esquemaEvento,
+  esquemaGuiaId,
+  esquemaTenantId,
+  esquemaWebhook,
+  validar,
+} from "./esquemas";
 
 /** Lo que necesita la API para funcionar. Se inyecta desde fuera (ver main.ts). */
 export interface DependenciasApp {
   readonly registrarEvento: Pick<RegistrarEvento, "ejecutar">;
   readonly consultarHistorial: Pick<ConsultarHistorial, "ejecutar">;
+  readonly configurarWebhook: Pick<ConfigurarWebhook, "ejecutar">;
+  readonly consultarWebhook: Pick<ConsultarWebhook, "ejecutar">;
   /** Comprueba que las dependencias externas (base de datos) responden; lanza error si no. */
   readonly comprobarSalud: () => Promise<void>;
   /** Se llama con los errores inesperados (500) para registrarlos. */
@@ -81,6 +91,25 @@ export function crearApp(dependencias: DependenciasApp): Express {
         ...(evento.observacion !== undefined && { observacion: evento.observacion }),
       })),
     });
+  });
+
+  // Configurar la URL del webhook del cliente (reemplaza la anterior si existía).
+  app.put("/webhook", async (req, res) => {
+    const tenantId = leerTenantId(req);
+    const { url } = validar(esquemaWebhook, req.body, "cuerpo");
+
+    const guardada = await dependencias.configurarWebhook.ejecutar({ tenantId, url });
+
+    res.json({ url: guardada });
+  });
+
+  // Consultar la URL del webhook del cliente.
+  app.get("/webhook", async (req, res) => {
+    const tenantId = leerTenantId(req);
+
+    const url = await dependencias.consultarWebhook.ejecutar({ tenantId });
+
+    res.json({ url });
   });
 
   // Cualquier otra ruta: 404 con el formato de error único.

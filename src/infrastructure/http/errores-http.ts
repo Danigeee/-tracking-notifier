@@ -3,7 +3,7 @@
 // Aquí (y solo aquí) se decide qué código HTTP corresponde a cada error del
 // dominio o de la aplicación. Esas capas no conocen HTTP.
 
-import { GuiaNoEncontradaError } from "../../application/errores";
+import { GuiaNoEncontradaError, WebhookNoConfiguradoError } from "../../application/errores";
 import {
   EventoFueraDeOrdenError,
   PrimerEventoInvalidoError,
@@ -66,7 +66,7 @@ export function traducirError(error: unknown): RespuestaError {
   if (error instanceof ErrorValidacion) {
     return respuesta(400, "PETICION_INVALIDA", error.message, error.detalles);
   }
-  if (error instanceof GuiaNoEncontradaError) {
+  if (error instanceof GuiaNoEncontradaError || error instanceof WebhookNoConfiguradoError) {
     return respuesta(404, error.codigo, error.message);
   }
   // Conflictos con el estado actual de la guía.

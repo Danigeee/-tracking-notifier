@@ -30,6 +30,16 @@ export const esquemaEvento = z.object({
 });
 
 /**
+ * Cuerpo de PUT /webhook.
+ * Se aceptan URLs http y https (decisión para esta prueba; en producción solo https).
+ */
+export const esquemaWebhook = z.object({
+  url: z
+    .url({ protocol: /^https?$/, error: "Debe ser una URL válida que empiece por http:// o https://" })
+    .max(2048, "Debe tener como máximo 2048 caracteres"),
+});
+
+/**
  * Valida un valor con un esquema. Si falla, lanza ErrorValidacion con el detalle
  * de cada campo inválido.
  * @param origen texto que se antepone al nombre del campo (por ejemplo "cabecera")

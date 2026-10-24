@@ -4,13 +4,16 @@
 
 import request from "supertest";
 import { Mock, beforeEach, describe, expect, it, vi } from "vitest";
+import { ConfigurarWebhook } from "../../../src/application/use-cases/configurar-webhook";
 import { ConsultarHistorial } from "../../../src/application/use-cases/consultar-historial";
+import { ConsultarWebhook } from "../../../src/application/use-cases/consultar-webhook";
 import { RegistrarEvento } from "../../../src/application/use-cases/registrar-evento";
 import { crearApp } from "../../../src/infrastructure/http/app";
 import {
   GuiaRepositoryEnMemoria,
   UnidadDeTrabajoEnMemoria,
 } from "../../support/guias-en-memoria";
+import { WebhookConfigRepositoryEnMemoria } from "../../support/webhooks-en-memoria";
 
 // Datos ficticios.
 const TENANT_A = "tenant-a";
@@ -33,11 +36,14 @@ describe("API HTTP", () => {
   // Cada prueba arranca con una aplicación y un repositorio vacíos.
   beforeEach(() => {
     const guias = new GuiaRepositoryEnMemoria();
+    const webhooks = new WebhookConfigRepositoryEnMemoria();
     comprobarSalud = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
     registrarError = vi.fn<(error: unknown) => void>();
     app = crearApp({
       registrarEvento: new RegistrarEvento(new UnidadDeTrabajoEnMemoria({ guias })),
       consultarHistorial: new ConsultarHistorial(guias),
+      configurarWebhook: new ConfigurarWebhook(webhooks),
+      consultarWebhook: new ConsultarWebhook(webhooks),
       comprobarSalud,
       registrarError,
     });
@@ -252,6 +258,83 @@ describe("API HTTP", () => {
     });
   });
 
+  describe("PUT /webhook y GET /webhook", () => {
+    const URL_1 = "https://cliente-a.example/webhook";
+    const URL_2 = "http://webhook:4000/hook";
+
+    /** Configura el webhook de un tenant. */
+    const configurar = (tenant: string | null, body: unknown) => {
+      const peticion = request(app).put("/webhook");
+      if (tenant) peticion.set("X-Tenant-Id", tenant);
+      return peticion.send(body as object);
+    };
+
+    it("guarda la URL y responde 200", async () => {
+      const res = await configurar(TENANT_A, { url: URL_1 });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ url: URL_1 });
+    });
+
+    it("permite consultar la URL guardada", async () => {
+      await configurar(TENANT_A, { url: URL_1 });
+
+      const res = await request(app).get("/webhook").set("X-Tenant-Id", TENANT_A);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ url: URL_1 });
+    });
+
+    it("acepta URLs http y https", async () => {
+      expect((await configurar(TENANT_A, { url: URL_1 })).status).toBe(200);
+      expect((await configurar(TENANT_A, { url: URL_2 })).status).toBe(200);
+    });
+
+    it("reemplaza la URL anterior", async () => {
+      await configurar(TENANT_A, { url: URL_1 });
+      await configurar(TENANT_A, { url: URL_2 });
+
+      const res = await request(app).get("/webhook").set("X-Tenant-Id", TENANT_A);
+
+      expect(res.body.url).toBe(URL_2);
+    });
+
+    it("404 si el tenant no configuró su webhook", async () => {
+      const res = await request(app).get("/webhook").set("X-Tenant-Id", TENANT_A);
+
+      expect(res.status).toBe(404);
+      expect(res.body.error.codigo).toBe("WEBHOOK_NO_CONFIGURADO");
+    });
+
+    it("un tenant no ve el webhook de otro", async () => {
+      await configurar(TENANT_A, { url: URL_1 });
+
+      const res = await request(app).get("/webhook").set("X-Tenant-Id", TENANT_B);
+
+      expect(res.status).toBe(404);
+    });
+
+    it.each([
+      ["una URL sin protocolo", { url: "cliente.example/webhook" }],
+      ["un protocolo no permitido", { url: "ftp://cliente.example/webhook" }],
+      ["un esquema peligroso", { url: "javascript:alert(1)" }],
+      ["un texto que no es URL", { url: "no-es-una-url" }],
+      ["una URL demasiado larga", { url: "https://cliente.example/" + "a".repeat(2050) }],
+      ["sin el campo url", {}],
+      ["una url que no es texto", { url: 123 }],
+    ])("400 con %s", async (_descripcion, cuerpoInvalido) => {
+      const res = await configurar(TENANT_A, cuerpoInvalido);
+
+      expect(res.status).toBe(400);
+      expect(res.body.error.codigo).toBe("PETICION_INVALIDA");
+    });
+
+    it("400 sin cabecera X-Tenant-Id", async () => {
+      expect((await configurar(null, { url: URL_1 })).status).toBe(400);
+      expect((await request(app).get("/webhook")).status).toBe(400);
+    });
+  });
+
   describe("GET /health", () => {
     it("responde 200 si la base responde", async () => {
       const res = await request(app).get("/health");
@@ -283,6 +366,8 @@ describe("API HTTP", () => {
       const appRota = crearApp({
         registrarEvento: { ejecutar: vi.fn().mockRejectedValue(new Error("password=secreta")) },
         consultarHistorial: { ejecutar: vi.fn() },
+        configurarWebhook: { ejecutar: vi.fn() },
+        consultarWebhook: { ejecutar: vi.fn() },
         comprobarSalud,
         registrarError,
       });

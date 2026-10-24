@@ -21,6 +21,15 @@ export abstract class ErrorAplicacion extends Error {
 }
 
 /**
+ * Se lanza cuando se consulta el webhook de un tenant que todavía no lo configuró.
+ */
+export class WebhookNoConfiguradoError extends ErrorAplicacion {
+  constructor() {
+    super("WEBHOOK_NO_CONFIGURADO", "El cliente todavía no configuró su webhook");
+  }
+}
+
+/**
  * Se lanza cuando la guía pedida no existe para el tenant que consulta.
  * Si la guía existe pero es de otro tenant, el resultado es el mismo: así no
  * se revela que existe en otro cliente.
