@@ -44,6 +44,18 @@ describe("cargarConfig", () => {
     expect(() => cargarConfig({ DATABASE_URL, WEBHOOK_TIMEOUT_MS: "abc" })).toThrow(/WEBHOOK_TIMEOUT_MS/);
   });
 
+  it("el nivel de logs por defecto es info", () => {
+    expect(cargarConfig({ DATABASE_URL }).nivelLog).toBe("info");
+  });
+
+  it.each(["debug", "info", "warn", "error", "silent"])("acepta el nivel de logs %s", (nivel) => {
+    expect(cargarConfig({ DATABASE_URL, LOG_LEVEL: nivel }).nivelLog).toBe(nivel);
+  });
+
+  it("falla si el nivel de logs no existe", () => {
+    expect(() => cargarConfig({ DATABASE_URL, LOG_LEVEL: "verbose" })).toThrow(/LOG_LEVEL/);
+  });
+
   it("falla si falta DATABASE_URL e indica la variable", () => {
     expect(() => cargarConfig({ PORT: "3000" })).toThrow(/DATABASE_URL/);
   });

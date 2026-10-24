@@ -13,6 +13,7 @@ import { RegistrarEvento } from "./application/use-cases/registrar-evento";
 import { RotarSecretoWebhook } from "./application/use-cases/rotar-secreto-webhook";
 import { cargarConfig } from "./config/config";
 import { crearApp } from "./infrastructure/http/app";
+import { RegistradorPino } from "./infrastructure/logging/registrador-pino";
 import { GuiaRepositoryPrisma } from "./infrastructure/persistence/guia-repository-prisma";
 import { NotificacionRepositoryPrisma } from "./infrastructure/persistence/notificacion-repository-prisma";
 import { UnidadDeTrabajoPrisma } from "./infrastructure/persistence/unidad-de-trabajo-prisma";
@@ -24,12 +25,13 @@ import { WorkerNotificaciones } from "./infrastructure/worker/worker-notificacio
 
 const config = cargarConfig();
 
-// Adaptadores de salida: base de datos y reloj.
+// Adaptadores de salida: logs, base de datos y reloj.
+const registrador = new RegistradorPino(config.nivelLog);
 const prisma = new PrismaClient({ datasourceUrl: config.databaseUrl });
 const reloj = new RelojSistema();
 
 // Casos de uso, conectados a sus puertos.
-const registrarEvento = new RegistrarEvento(new UnidadDeTrabajoPrisma(prisma), reloj);
+const registrarEvento = new RegistrarEvento(new UnidadDeTrabajoPrisma(prisma), reloj, registrador);
 const consultarHistorial = new ConsultarHistorial(new GuiaRepositoryPrisma(prisma));
 const notificaciones = new NotificacionRepositoryPrisma(prisma);
 const consultarNotificaciones = new ConsultarNotificaciones(notificaciones);
@@ -37,6 +39,7 @@ const enviarNotificaciones = new EnviarNotificacionesPendientes(
   notificaciones,
   new ClienteWebhookHttp(config.webhookTimeoutMs, reloj),
   reloj,
+  registrador,
   { tamanoLote: config.workerTamanoLote },
 );
 const webhooks = new WebhookConfigRepositoryPrisma(prisma);
@@ -56,8 +59,7 @@ const app = crearApp({
   comprobarSalud: async () => {
     await prisma.$queryRaw`SELECT 1`;
   },
-  // Provisional: en una fase posterior se reemplaza por logs estructurados.
-  registrarError: (error) => console.error("Error inesperado", error),
+  registrador,
 });
 
 // Adaptador de entrada: worker que envía las notificaciones pendientes.
@@ -65,17 +67,22 @@ const worker = new WorkerNotificaciones(
   enviarNotificaciones,
   config.workerIntervaloMs,
   config.workerTamanoLote,
-  (error) => console.error("Error en el envío de notificaciones", error),
+  registrador,
 );
 
 const servidor = app.listen(config.puerto, () => {
-  console.log(`tracking-notifier escuchando en el puerto ${config.puerto}`);
+  registrador.info("servicio iniciado", {
+    puerto: config.puerto,
+    nivelLog: config.nivelLog,
+    workerIntervaloMs: config.workerIntervaloMs,
+  });
 });
 worker.iniciar();
 
 // Apagado ordenado: deja de aceptar peticiones, deja que el worker termine el envío
 // en curso y cierra la conexión a la base.
 async function apagar(): Promise<void> {
+  registrador.info("servicio deteniéndose");
   servidor.close();
   await worker.detener();
   await prisma.$disconnect();

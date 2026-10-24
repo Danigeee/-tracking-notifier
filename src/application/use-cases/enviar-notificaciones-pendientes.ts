@@ -12,6 +12,7 @@ import {
 } from "../../domain/politica-reintentos";
 import { ClienteWebhook, PayloadWebhook, ResultadoEnvio } from "../ports/cliente-webhook";
 import { NotificacionPorEnviar, NotificacionRepository } from "../ports/notificacion-repository";
+import { Registrador } from "../ports/registrador";
 import { Reloj } from "../ports/reloj";
 
 /** Opciones del caso de uso. */
@@ -53,6 +54,7 @@ export class EnviarNotificacionesPendientes {
     private readonly notificaciones: NotificacionRepository,
     private readonly clienteWebhook: ClienteWebhook,
     private readonly reloj: Reloj,
+    private readonly registrador: Registrador,
     opciones: Partial<OpcionesEnvio> = {},
   ) {
     this.opciones = { ...OPCIONES_POR_DEFECTO, ...opciones };
@@ -105,7 +107,37 @@ export class EnviarNotificacionesPendientes {
         );
 
     await this.notificaciones.guardar(actualizada);
+    this.registrarIntento(actualizada, resultado);
     return actualizada;
+  }
+
+  /**
+   * Deja constancia del intento. Solo se registran identificadores, el número de intento y
+   * el motivo (un texto corto nuestro): nunca la URL del cliente, el secreto ni el mensaje.
+   */
+  private registrarIntento(n: Notificacion, resultado: ResultadoEnvio): void {
+    const datos = {
+      tenantId: n.tenantId,
+      guiaId: n.guiaId,
+      eventId: n.eventId,
+      intento: n.intentos,
+    };
+    if (resultado.exito) {
+      this.registrador.info("aviso entregado", { ...datos, codigoHttp: resultado.codigoHttp });
+    } else if (n.estado === "FALLIDA") {
+      this.registrador.error("aviso fallido definitivamente", {
+        ...datos,
+        motivo: resultado.motivo,
+        codigoHttp: resultado.codigoHttp,
+      });
+    } else {
+      this.registrador.warn("aviso fallido, se reintentará", {
+        ...datos,
+        motivo: resultado.motivo,
+        codigoHttp: resultado.codigoHttp,
+        proximoIntento: n.proximoIntento.toISOString(),
+      });
+    }
   }
 
   /** Llama al cliente de webhook. Un error inesperado se trata como un intento fallido más. */

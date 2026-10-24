@@ -4,6 +4,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ResumenEnvio } from "../../../src/application/use-cases/enviar-notificaciones-pendientes";
 import { WorkerNotificaciones } from "../../../src/infrastructure/worker/worker-notificaciones";
+import { RegistradorEnMemoria } from "../../support/registrador-en-memoria";
 
 /** Resumen de una pasada que procesó `n` notificaciones. */
 const resumen = (n: number, errores: unknown[] = []): ResumenEnvio => ({
@@ -25,7 +26,7 @@ describe("WorkerNotificaciones", () => {
 
   it("ejecuta pasadas de forma periódica", async () => {
     const ejecutar = vi.fn().mockResolvedValue(resumen(0));
-    worker = new WorkerNotificaciones({ ejecutar }, 10, 10, vi.fn());
+    worker = new WorkerNotificaciones({ ejecutar }, 10, 10, new RegistradorEnMemoria());
 
     worker.iniciar();
 
@@ -34,7 +35,7 @@ describe("WorkerNotificaciones", () => {
 
   it("no ejecuta nada antes de iniciar", async () => {
     const ejecutar = vi.fn().mockResolvedValue(resumen(0));
-    worker = new WorkerNotificaciones({ ejecutar }, 10, 10, vi.fn());
+    worker = new WorkerNotificaciones({ ejecutar }, 10, 10, new RegistradorEnMemoria());
 
     await new Promise((resolver) => setTimeout(resolver, 50));
 
@@ -43,7 +44,7 @@ describe("WorkerNotificaciones", () => {
 
   it("detener() impide nuevas pasadas", async () => {
     const ejecutar = vi.fn().mockResolvedValue(resumen(0));
-    worker = new WorkerNotificaciones({ ejecutar }, 10, 10, vi.fn());
+    worker = new WorkerNotificaciones({ ejecutar }, 10, 10, new RegistradorEnMemoria());
     worker.iniciar();
     await vi.waitFor(() => expect(ejecutar).toHaveBeenCalled());
 
@@ -65,7 +66,7 @@ describe("WorkerNotificaciones", () => {
           }, 80),
         ),
     );
-    worker = new WorkerNotificaciones({ ejecutar }, 10, 10, vi.fn());
+    worker = new WorkerNotificaciones({ ejecutar }, 10, 10, new RegistradorEnMemoria());
     worker.iniciar();
     await vi.waitFor(() => expect(ejecutar).toHaveBeenCalled());
 
@@ -86,7 +87,7 @@ describe("WorkerNotificaciones", () => {
       return resumen(0);
     });
     // Intervalo (5 ms) mucho menor que lo que tarda cada pasada (30 ms).
-    worker = new WorkerNotificaciones({ ejecutar }, 5, 10, vi.fn());
+    worker = new WorkerNotificaciones({ ejecutar }, 5, 10, new RegistradorEnMemoria());
 
     worker.iniciar();
     await vi.waitFor(() => expect(ejecutar.mock.calls.length).toBeGreaterThanOrEqual(3));
@@ -95,37 +96,40 @@ describe("WorkerNotificaciones", () => {
   });
 
   it("si una pasada falla, informa el error y sigue con las siguientes", async () => {
-    const registrarError = vi.fn();
+    const registrador = new RegistradorEnMemoria();
     const ejecutar = vi
       .fn()
       .mockRejectedValueOnce(new Error("base de datos caída"))
       .mockResolvedValue(resumen(0));
-    worker = new WorkerNotificaciones({ ejecutar }, 10, 10, registrarError);
+    worker = new WorkerNotificaciones({ ejecutar }, 10, 10, registrador);
 
     worker.iniciar();
 
     await vi.waitFor(() => expect(ejecutar.mock.calls.length).toBeGreaterThanOrEqual(3));
-    expect(registrarError).toHaveBeenCalledTimes(1);
-    expect(registrarError.mock.calls[0]?.[0]).toEqual(new Error("base de datos caída"));
+    const errores = registrador.con("falló una pasada del envío de notificaciones");
+    expect(errores).toHaveLength(1);
+    expect(errores[0]?.error).toEqual(new Error("base de datos caída"));
   });
 
   it("informa los errores que el caso de uso devuelve en el resumen", async () => {
-    const registrarError = vi.fn();
+    const registrador = new RegistradorEnMemoria();
     const ejecutar = vi
       .fn()
       .mockResolvedValueOnce(resumen(2, ["error al guardar 1", "error al guardar 2"]))
       .mockResolvedValue(resumen(0));
-    worker = new WorkerNotificaciones({ ejecutar }, 10, 10, registrarError);
+    worker = new WorkerNotificaciones({ ejecutar }, 10, 10, registrador);
 
     worker.iniciar();
 
-    await vi.waitFor(() => expect(registrarError).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() =>
+      expect(registrador.con("no se pudo guardar el resultado de un envío")).toHaveLength(2),
+    );
   });
 
   it("si una pasada llena el lote, la siguiente es inmediata", async () => {
     // Intervalo largo (10 s): solo habrá una segunda pasada pronto si no espera el intervalo.
     const ejecutar = vi.fn().mockResolvedValueOnce(resumen(10)).mockResolvedValue(resumen(0));
-    worker = new WorkerNotificaciones({ ejecutar }, 10_000, 10, vi.fn());
+    worker = new WorkerNotificaciones({ ejecutar }, 10_000, 10, new RegistradorEnMemoria());
 
     worker.iniciar();
 
@@ -134,7 +138,7 @@ describe("WorkerNotificaciones", () => {
 
   it("si el lote no se llena, espera el intervalo antes de la siguiente pasada", async () => {
     const ejecutar = vi.fn().mockResolvedValue(resumen(3));
-    worker = new WorkerNotificaciones({ ejecutar }, 10_000, 10, vi.fn());
+    worker = new WorkerNotificaciones({ ejecutar }, 10_000, 10, new RegistradorEnMemoria());
 
     worker.iniciar();
     await vi.waitFor(() => expect(ejecutar).toHaveBeenCalledTimes(1));
@@ -145,7 +149,7 @@ describe("WorkerNotificaciones", () => {
 
   it("iniciar() dos veces no duplica el bucle", async () => {
     const ejecutar = vi.fn().mockResolvedValue(resumen(0));
-    worker = new WorkerNotificaciones({ ejecutar }, 10_000, 10, vi.fn());
+    worker = new WorkerNotificaciones({ ejecutar }, 10_000, 10, new RegistradorEnMemoria());
 
     worker.iniciar();
     worker.iniciar();

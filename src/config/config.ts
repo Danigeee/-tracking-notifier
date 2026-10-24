@@ -5,6 +5,7 @@
 // puede contener secretos como la contraseña de la base de datos).
 
 import { z } from "zod";
+import { NIVELES_LOG, NivelLog } from "../infrastructure/logging/registrador-pino";
 
 /** Variables de entorno esperadas y sus reglas. */
 const esquemaEntorno = z.object({
@@ -18,6 +19,8 @@ const esquemaEntorno = z.object({
   WORKER_BATCH_SIZE: z.coerce.number().int().min(1).max(500).default(10),
   // Tiempo máximo de espera de la respuesta del webhook del cliente (la prueba pide 5 segundos).
   WEBHOOK_TIMEOUT_MS: z.coerce.number().int().min(100).default(5000),
+  // Nivel mínimo de los logs. "silent" los apaga.
+  LOG_LEVEL: z.enum(NIVELES_LOG).default("info"),
 });
 
 /** Configuración ya validada y con nombres propios de la aplicación. */
@@ -27,6 +30,7 @@ export interface Config {
   readonly workerIntervaloMs: number;
   readonly workerTamanoLote: number;
   readonly webhookTimeoutMs: number;
+  readonly nivelLog: NivelLog;
 }
 
 /**
@@ -49,5 +53,6 @@ export function cargarConfig(entorno: NodeJS.ProcessEnv = process.env): Config {
     workerIntervaloMs: resultado.data.WORKER_INTERVAL_MS,
     workerTamanoLote: resultado.data.WORKER_BATCH_SIZE,
     webhookTimeoutMs: resultado.data.WEBHOOK_TIMEOUT_MS,
+    nivelLog: resultado.data.LOG_LEVEL,
   };
 }

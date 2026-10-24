@@ -13,6 +13,7 @@ import {
 import { EstadoGuia } from "../../src/domain/estado-guia";
 import { GuiaRepositoryEnMemoria, UnidadDeTrabajoEnMemoria } from "../support/guias-en-memoria";
 import { NotificacionRepositoryEnMemoria } from "../support/notificaciones-en-memoria";
+import { RegistradorEnMemoria } from "../support/registrador-en-memoria";
 import { RelojFijo } from "../support/reloj-fijo";
 
 // Datos ficticios.
@@ -40,6 +41,7 @@ describe("RegistrarEvento", () => {
   let guias: GuiaRepositoryEnMemoria;
   let notificaciones: NotificacionRepositoryEnMemoria;
   let reloj: RelojFijo;
+  let registrador: RegistradorEnMemoria;
   let registrarEvento: RegistrarEvento;
 
   // Cada prueba arranca con repositorios vacíos.
@@ -47,9 +49,11 @@ describe("RegistrarEvento", () => {
     guias = new GuiaRepositoryEnMemoria();
     notificaciones = new NotificacionRepositoryEnMemoria();
     reloj = new RelojFijo();
+    registrador = new RegistradorEnMemoria();
     registrarEvento = new RegistrarEvento(
       new UnidadDeTrabajoEnMemoria({ guias, notificaciones }),
       reloj,
+      registrador,
     );
   });
 
@@ -121,6 +125,43 @@ describe("RegistrarEvento", () => {
     // La guía del tenant A no se alteró.
     const guiaA = await guias.buscar(TENANT_A, GUIA);
     expect(guiaA?.estadoActual).toBe("EN_RUTA");
+  });
+
+  describe("logs", () => {
+    it("registra el evento aceptado con tenant, guía, evento y estado", async () => {
+      await registrarEvento.ejecutar(comando("e1", "CREADA", 0));
+
+      expect(registrador.con("evento registrado")).toEqual([
+        {
+          nivel: "info",
+          mensaje: "evento registrado",
+          datos: { tenantId: TENANT_A, guiaId: GUIA, eventId: "e1", estado: "CREADA" },
+        },
+      ]);
+    });
+
+    it("registra un duplicado con un mensaje distinto", async () => {
+      await registrarEvento.ejecutar(comando("e1", "CREADA", 0));
+      await registrarEvento.ejecutar(comando("e1", "CREADA", 0));
+
+      expect(registrador.con("evento registrado")).toHaveLength(1);
+      expect(registrador.con("evento duplicado ignorado")).toHaveLength(1);
+    });
+
+    it("un evento rechazado no deja un log de que se aceptó", async () => {
+      await registrarEvento.ejecutar(comando("e1", "CREADA", 0));
+      registrador.entradas.length = 0;
+
+      await expect(registrarEvento.ejecutar(comando("e2", "ENTREGADA", 5))).rejects.toThrow();
+
+      expect(registrador.entradas).toHaveLength(0);
+    });
+
+    it("no registra la observación del evento", async () => {
+      await registrarEvento.ejecutar({ ...comando("e1", "CREADA", 0), observacion: "texto libre privado" });
+
+      expect(registrador.comoTexto()).not.toContain("texto libre privado");
+    });
   });
 
   describe("notificaciones", () => {

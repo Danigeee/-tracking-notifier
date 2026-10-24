@@ -4,6 +4,7 @@ import { EstadoGuia } from "../../domain/estado-guia";
 import { EventoGuia } from "../../domain/evento-guia";
 import { Guia, ResultadoRegistro } from "../../domain/guia";
 import { Notificacion } from "../../domain/notificacion";
+import { Registrador } from "../ports/registrador";
 import { Reloj } from "../ports/reloj";
 import { UnidadDeTrabajo } from "../ports/unidad-de-trabajo";
 
@@ -32,6 +33,7 @@ export class RegistrarEvento {
   constructor(
     private readonly unidadDeTrabajo: UnidadDeTrabajo,
     private readonly reloj: Reloj,
+    private readonly registrador: Registrador,
   ) {}
 
   /**
@@ -50,7 +52,7 @@ export class RegistrarEvento {
       observacion: comando.observacion,
     };
 
-    return this.unidadDeTrabajo.ejecutar(async ({ guias, notificaciones }) => {
+    const resultado = await this.unidadDeTrabajo.ejecutar<RegistrarEventoResultado>(async ({ guias, notificaciones }) => {
       const existente = await guias.buscar(comando.tenantId, comando.guiaId);
 
       // Guía nueva: nace con este evento (lanza error si no es CREADA).
@@ -75,5 +77,18 @@ export class RegistrarEvento {
       }
       return { resultado, estadoActual: existente.estadoActual };
     });
+
+    // Se registra después de confirmar la transacción: si hubiera fallado, no queda un
+    // log que diga que el evento se aceptó. No se incluye la observación (texto libre).
+    this.registrador.info(
+      resultado.resultado === "REGISTRADO" ? "evento registrado" : "evento duplicado ignorado",
+      {
+        tenantId: comando.tenantId,
+        guiaId: comando.guiaId,
+        eventId: comando.eventId,
+        estado: comando.estado,
+      },
+    );
+    return resultado;
   }
 }

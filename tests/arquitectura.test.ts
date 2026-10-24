@@ -67,7 +67,8 @@ describe("regla de dependencias", () => {
       violaciones(
         "infrastructure/http",
         ["domain", "application", "infrastructure/http"],
-        ["express", "zod"],
+        // node:crypto: genera el identificador de seguimiento de cada petición.
+        ["express", "zod", "node:crypto"],
       ),
     ).toEqual([]);
   });
@@ -93,6 +94,16 @@ describe("regla de dependencias", () => {
     ).toEqual([]);
     expect(
       violaciones("infrastructure/worker", ["domain", "application", "infrastructure/worker"]),
+    ).toEqual([]);
+  });
+
+  it("el adaptador de logs solo depende de dominio, aplicación y pino", () => {
+    expect(
+      violaciones(
+        "infrastructure/logging",
+        ["domain", "application", "infrastructure/logging"],
+        ["pino"],
+      ),
     ).toEqual([]);
   });
 });

@@ -11,6 +11,7 @@ import {
   OK,
 } from "../support/cliente-webhook-falso";
 import { NotificacionRepositoryEnMemoria } from "../support/notificaciones-en-memoria";
+import { RegistradorEnMemoria } from "../support/registrador-en-memoria";
 import { RelojFijo } from "../support/reloj-fijo";
 import { WebhookConfigRepositoryEnMemoria } from "../support/webhooks-en-memoria";
 
@@ -27,6 +28,7 @@ describe("EnviarNotificacionesPendientes", () => {
   let repositorio: NotificacionRepositoryEnMemoria;
   let reloj: RelojFijo;
   let cliente: ClienteWebhookFalso;
+  let registrador: RegistradorEnMemoria;
   let enviar: EnviarNotificacionesPendientes;
 
   /** Crea y guarda una notificación pendiente lista para enviarse ahora. */
@@ -52,7 +54,8 @@ describe("EnviarNotificacionesPendientes", () => {
     repositorio = new NotificacionRepositoryEnMemoria(webhooks);
     reloj = new RelojFijo();
     cliente = new ClienteWebhookFalso();
-    enviar = new EnviarNotificacionesPendientes(repositorio, cliente, reloj);
+    registrador = new RegistradorEnMemoria();
+    enviar = new EnviarNotificacionesPendientes(repositorio, cliente, reloj, registrador);
   });
 
   describe("envío correcto", () => {
@@ -281,6 +284,67 @@ describe("EnviarNotificacionesPendientes", () => {
     });
   });
 
+  describe("logs", () => {
+    it("registra el aviso entregado con sus identificadores, el intento y el código", async () => {
+      await crearNotificacion("e1");
+
+      await enviar.ejecutar();
+
+      expect(registrador.con("aviso entregado")).toEqual([
+        {
+          nivel: "info",
+          mensaje: "aviso entregado",
+          datos: { tenantId: TENANT_A, guiaId: "GUIA-001", eventId: "e1", intento: 1, codigoHttp: 200 },
+        },
+      ]);
+    });
+
+    it("registra un fallo con el motivo y cuándo se reintentará", async () => {
+      cliente.responder(ERROR_500);
+      await crearNotificacion("e1");
+
+      await enviar.ejecutar();
+
+      const [fallo] = registrador.con("aviso fallido, se reintentará");
+      expect(fallo?.nivel).toBe("warn");
+      expect(fallo?.datos).toMatchObject({
+        eventId: "e1",
+        intento: 1,
+        motivo: "el webhook respondió 500",
+        codigoHttp: 500,
+        proximoIntento: new Date(reloj.ahora().getTime() + 10_000).toISOString(),
+      });
+    });
+
+    it("registra como error el aviso que agota sus intentos", async () => {
+      cliente.responder(ERROR_500, ERROR_500, ERROR_500, ERROR_500, ERROR_500);
+      await crearNotificacion("e1");
+      for (let i = 0; i < 5; i++) {
+        await enviar.ejecutar();
+        reloj.avanzar(3600);
+      }
+
+      expect(registrador.con("aviso fallido, se reintentará")).toHaveLength(4);
+      const [definitivo] = registrador.con("aviso fallido definitivamente");
+      expect(definitivo?.nivel).toBe("error");
+      expect(definitivo?.datos).toMatchObject({ eventId: "e1", intento: 5 });
+    });
+
+    it("no registra la URL del cliente, el secreto ni el contenido del mensaje", async () => {
+      cliente.responder(ERROR_500, OK);
+      await crearNotificacion("e1", TENANT_A, "observacion privada del cliente");
+      await enviar.ejecutar();
+      reloj.avanzar(10);
+      await enviar.ejecutar();
+
+      const todo = registrador.comoTexto();
+      expect(todo).not.toContain(URL_A);
+      expect(todo).not.toContain("cliente-a.example");
+      expect(todo).not.toContain(SECRETO_A);
+      expect(todo).not.toContain("observacion privada");
+    });
+  });
+
   describe("tenant sin webhook configurado", () => {
     it("no se envía ni gasta intentos: queda pendiente", async () => {
       await crearNotificacion("e1", "tenant-sin-webhook");
@@ -312,7 +376,7 @@ describe("EnviarNotificacionesPendientes", () => {
 
     it("las notificaciones sin webhook no bloquean las de otros tenants", async () => {
       // El lote es de 1: si las del tenant sin webhook se reclamaran, impedirían enviar la del tenant A.
-      enviar = new EnviarNotificacionesPendientes(repositorio, cliente, reloj, { tamanoLote: 1 });
+      enviar = new EnviarNotificacionesPendientes(repositorio, cliente, reloj, registrador, { tamanoLote: 1 });
       await crearNotificacion("sin-webhook-1", "tenant-sin-webhook");
       await crearNotificacion("sin-webhook-2", "tenant-sin-webhook");
       await crearNotificacion("a1", TENANT_A);
@@ -325,7 +389,7 @@ describe("EnviarNotificacionesPendientes", () => {
 
   describe("lotes y concurrencia", () => {
     it("procesa como máximo un lote por pasada", async () => {
-      enviar = new EnviarNotificacionesPendientes(repositorio, cliente, reloj, { tamanoLote: 2 });
+      enviar = new EnviarNotificacionesPendientes(repositorio, cliente, reloj, registrador, { tamanoLote: 2 });
       for (const id of ["e1", "e2", "e3", "e4", "e5"]) await crearNotificacion(id);
 
       const primera = await enviar.ejecutar();
@@ -341,7 +405,7 @@ describe("EnviarNotificacionesPendientes", () => {
       cliente = new ClienteWebhookFalso(
         () => new Promise((resolver) => setTimeout(() => resolver(OK), 20)),
       );
-      enviar = new EnviarNotificacionesPendientes(repositorio, cliente, reloj);
+      enviar = new EnviarNotificacionesPendientes(repositorio, cliente, reloj, registrador);
       await crearNotificacion("e1");
 
       await Promise.all([enviar.ejecutar(), enviar.ejecutar()]);

@@ -17,6 +17,7 @@ import {
 } from "../../support/guias-en-memoria";
 import { GeneradorSecretosFalso } from "../../support/generador-secretos-falso";
 import { NotificacionRepositoryEnMemoria } from "../../support/notificaciones-en-memoria";
+import { RegistradorEnMemoria } from "../../support/registrador-en-memoria";
 import { RelojFijo } from "../../support/reloj-fijo";
 import { WebhookConfigRepositoryEnMemoria } from "../../support/webhooks-en-memoria";
 
@@ -36,7 +37,7 @@ function cuerpo(eventId: string, estado: string, minuto: number, extra: object =
 describe("API HTTP", () => {
   let app: ReturnType<typeof crearApp>;
   let comprobarSalud: Mock<() => Promise<void>>;
-  let registrarError: Mock<(error: unknown) => void>;
+  let registrador: RegistradorEnMemoria;
 
   // Cada prueba arranca con una aplicación y un repositorio vacíos.
   beforeEach(() => {
@@ -45,11 +46,12 @@ describe("API HTTP", () => {
     const generadorSecretos = new GeneradorSecretosFalso();
     const notificaciones = new NotificacionRepositoryEnMemoria();
     comprobarSalud = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
-    registrarError = vi.fn<(error: unknown) => void>();
+    registrador = new RegistradorEnMemoria();
     app = crearApp({
       registrarEvento: new RegistrarEvento(
         new UnidadDeTrabajoEnMemoria({ guias, notificaciones }),
         new RelojFijo(),
+        registrador,
       ),
       consultarHistorial: new ConsultarHistorial(guias),
       consultarNotificaciones: new ConsultarNotificaciones(notificaciones),
@@ -57,7 +59,7 @@ describe("API HTTP", () => {
       consultarWebhook: new ConsultarWebhook(webhooks),
       rotarSecretoWebhook: new RotarSecretoWebhook(webhooks, generadorSecretos),
       comprobarSalud,
-      registrarError,
+      registrador,
     });
   });
 
@@ -508,6 +510,156 @@ describe("API HTTP", () => {
     });
   });
 
+  describe("logs de las peticiones", () => {
+    /** Líneas de log de peticiones (excluye las de los casos de uso). */
+    const deAcceso = () =>
+      registrador.entradas.filter(
+        (e) =>
+          e.mensaje === "petición atendida" ||
+          e.mensaje === "petición rechazada" ||
+          e.mensaje === "petición con error del servidor",
+      );
+
+    it("registra una línea por petición con método, ruta, código, duración, tenant y guía", async () => {
+      await registrar(TENANT_A, "GUIA-001", cuerpo(EVENTO_1, "CREADA", 0));
+
+      const [linea] = deAcceso();
+      expect(linea?.nivel).toBe("info");
+      expect(linea?.datos).toMatchObject({
+        metodo: "POST",
+        // Se registra el patrón de la ruta, no la dirección real.
+        ruta: "/guias/:guiaId/eventos",
+        status: 201,
+        tenantId: TENANT_A,
+        guiaId: "GUIA-001",
+      });
+      expect(linea?.datos["duracionMs"]).toBeTypeOf("number");
+      expect(deAcceso()).toHaveLength(1);
+    });
+
+    it("devuelve X-Request-Id y es el mismo identificador que queda en el log", async () => {
+      const res = await registrar(TENANT_A, "GUIA-001", cuerpo(EVENTO_1, "CREADA", 0));
+
+      expect(res.headers["x-request-id"]).toMatch(/^[0-9a-f-]{36}$/);
+      expect(deAcceso()[0]?.datos["requestId"]).toBe(res.headers["x-request-id"]);
+    });
+
+    it("cada petición recibe un identificador distinto", async () => {
+      const a = await request(app).get("/health");
+      const b = await request(app).get("/health");
+
+      expect(a.headers["x-request-id"]).not.toBe(b.headers["x-request-id"]);
+    });
+
+    it("conserva el X-Request-Id que envía quien llama si tiene un formato seguro", async () => {
+      const res = await request(app).get("/health").set("X-Request-Id", "mi-traza-12345");
+
+      expect(res.headers["x-request-id"]).toBe("mi-traza-12345");
+    });
+
+    it("reemplaza un X-Request-Id con formato inseguro", async () => {
+      const res = await request(app).get("/health").set("X-Request-Id", "texto con espacios y llaves");
+
+      expect(res.headers["x-request-id"]).not.toContain("espacios");
+      expect(res.headers["x-request-id"]).toMatch(/^[0-9a-f-]{36}$/);
+    });
+
+    it("una petición rechazada por reglas de negocio se registra como warn con su código de error", async () => {
+      await registrar(TENANT_A, "GUIA-001", cuerpo(EVENTO_1, "CREADA", 0));
+      registrador.entradas.length = 0;
+
+      await registrar(TENANT_A, "GUIA-001", cuerpo(EVENTO_2, "ENTREGADA", 5)); // 409
+
+      const [linea] = deAcceso();
+      expect(linea?.nivel).toBe("warn");
+      expect(linea?.datos).toMatchObject({ status: 409, errorCodigo: "TRANSICION_INVALIDA" });
+    });
+
+    it("una validación fallida se registra como warn con código 400", async () => {
+      await registrar(TENANT_A, "GUIA-001", cuerpo("no-es-uuid", "CREADA", 0));
+
+      expect(deAcceso()[0]).toMatchObject({
+        nivel: "warn",
+        datos: { status: 400, errorCodigo: "PETICION_INVALIDA" },
+      });
+    });
+
+    it("un error del servidor se registra como error", async () => {
+      comprobarSalud.mockRejectedValue(new Error("sin conexión"));
+
+      await request(app).get("/health");
+
+      expect(deAcceso()[0]).toMatchObject({ nivel: "error", datos: { status: 503 } });
+    });
+
+    it("el health check correcto solo se registra al depurar", async () => {
+      await request(app).get("/health");
+
+      expect(deAcceso()[0]?.nivel).toBe("debug");
+    });
+
+    it("no registra la dirección pedida cuando la ruta no existe", async () => {
+      await request(app).get("/dato-raro-que-no-debe-salir-123");
+
+      expect(deAcceso()[0]?.datos["ruta"]).toBe("(sin ruta)");
+      expect(registrador.comoTexto()).not.toContain("dato-raro-que-no-debe-salir-123");
+    });
+
+    it("no registra el tenant si no pasó la validación", async () => {
+      await request(app).get("/guias/GUIA-001").set("X-Tenant-Id", "tenant invalido!");
+
+      expect(deAcceso()[0]?.datos["tenantId"]).toBeUndefined();
+      expect(registrador.comoTexto()).not.toContain("tenant invalido");
+    });
+
+    it("registra también las peticiones con JSON inválido", async () => {
+      await request(app)
+        .post("/guias/GUIA-001/eventos")
+        .set("X-Tenant-Id", TENANT_A)
+        .set("Content-Type", "application/json")
+        .send("{esto no es json");
+
+      expect(deAcceso()[0]?.datos).toMatchObject({ status: 400, errorCodigo: "JSON_INVALIDO" });
+    });
+  });
+
+  describe("los logs no filtran datos sensibles", () => {
+    it("no contienen observaciones, secretos ni URLs de webhook en ningún flujo", async () => {
+      // Se recorre un flujo completo con datos que NO deben aparecer en los logs.
+      const observacion = { observacion: "Entregar a Juan Perez, cedula 98765" };
+      const put = await request(app)
+        .put("/webhook")
+        .set("X-Tenant-Id", TENANT_A)
+        .send({ url: "https://cliente-privado.example/token-que-no-debe-salir" });
+      await request(app).post("/webhook/secreto").set("X-Tenant-Id", TENANT_A);
+      await registrar(TENANT_A, "GUIA-001", cuerpo(EVENTO_1, "CREADA", 0, observacion));
+      // El mismo evento otra vez: es un duplicado.
+      await registrar(TENANT_A, "GUIA-001", cuerpo(EVENTO_1, "CREADA", 0, observacion));
+      await request(app).get("/guias/GUIA-001").set("X-Tenant-Id", TENANT_A);
+      await request(app).get("/webhook").set("X-Tenant-Id", TENANT_A);
+
+      const todo = registrador.comoTexto();
+      expect(put.body.secreto).toBeTruthy();
+      expect(todo).not.toContain(put.body.secreto as string);
+      expect(todo).not.toContain("Juan Perez");
+      expect(todo).not.toContain("98765");
+      expect(todo).not.toContain("cliente-privado");
+      expect(todo).not.toContain("token-que-no-debe-salir");
+    });
+
+    it("registra el evento aceptado solo con identificadores y estado", async () => {
+      await registrar(TENANT_A, "GUIA-001", cuerpo(EVENTO_1, "CREADA", 0, { observacion: "texto libre" }));
+
+      const [linea] = registrador.con("evento registrado");
+      expect(linea?.datos).toEqual({
+        tenantId: TENANT_A,
+        guiaId: "GUIA-001",
+        eventId: EVENTO_1,
+        estado: "CREADA",
+      });
+    });
+  });
+
   describe("GET /health", () => {
     it("responde 200 si la base responde", async () => {
       const res = await request(app).get("/health");
@@ -522,7 +674,7 @@ describe("API HTTP", () => {
       const res = await request(app).get("/health");
 
       expect(res.status).toBe(503);
-      expect(registrarError).toHaveBeenCalledTimes(1);
+      expect(registrador.con("falló la comprobación de salud")).toHaveLength(1);
     });
   });
 
@@ -544,7 +696,7 @@ describe("API HTTP", () => {
         rotarSecretoWebhook: { ejecutar: vi.fn() },
         consultarWebhook: { ejecutar: vi.fn() },
         comprobarSalud,
-        registrarError,
+        registrador,
       });
 
       const res = await request(appRota)
@@ -555,7 +707,10 @@ describe("API HTTP", () => {
       expect(res.status).toBe(500);
       expect(res.body.error.codigo).toBe("ERROR_INTERNO");
       expect(JSON.stringify(res.body)).not.toContain("secreta");
-      expect(registrarError).toHaveBeenCalledTimes(1);
+      // El error real queda en el log, con el identificador que también recibió el cliente.
+      const [registro] = registrador.con("error inesperado al atender la petición");
+      expect(registro?.error).toEqual(new Error("password=secreta"));
+      expect(registro?.datos["requestId"]).toBe(res.headers["x-request-id"]);
     });
   });
 });

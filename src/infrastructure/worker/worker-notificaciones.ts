@@ -4,6 +4,7 @@
 // un caso de uso. Está pensado para que se puedan ejecutar varias instancias a la vez
 // sin enviar la misma notificación dos veces (lo garantiza el repositorio).
 
+import { Registrador } from "../../application/ports/registrador";
 import { EnviarNotificacionesPendientes } from "../../application/use-cases/enviar-notificaciones-pendientes";
 
 export class WorkerNotificaciones {
@@ -17,13 +18,13 @@ export class WorkerNotificaciones {
    * @param intervaloMs espera entre pasadas cuando no hay trabajo acumulado
    * @param tamanoLote tamaño de lote del caso de uso; si una pasada lo llena, hay más
    *        trabajo esperando y la siguiente pasada se hace de inmediato
-   * @param registrarError se llama con los errores, para que no se pierdan en silencio
+   * @param registrador donde se escriben los errores, para que no se pierdan en silencio
    */
   constructor(
     private readonly enviar: Pick<EnviarNotificacionesPendientes, "ejecutar">,
     private readonly intervaloMs: number,
     private readonly tamanoLote: number,
-    private readonly registrarError: (error: unknown) => void,
+    private readonly registrador: Registrador,
   ) {}
 
   /** Arranca el bucle. Si ya estaba arrancado no hace nada. */
@@ -53,11 +54,13 @@ export class WorkerNotificaciones {
     let hayMasTrabajo = false;
     try {
       const resumen = await this.enviar.ejecutar();
-      resumen.errores.forEach((error) => this.registrarError(error));
+      resumen.errores.forEach((error) =>
+        this.registrador.error("no se pudo guardar el resultado de un envío", {}, error),
+      );
       // Un lote lleno indica que puede haber más pendientes: no se espera el intervalo.
       hayMasTrabajo = resumen.procesadas >= this.tamanoLote;
     } catch (error) {
-      this.registrarError(error);
+      this.registrador.error("falló una pasada del envío de notificaciones", {}, error);
     }
     // El siguiente turno se programa al terminar, así dos pasadas nunca se solapan.
     this.programar(hayMasTrabajo ? 0 : this.intervaloMs);
