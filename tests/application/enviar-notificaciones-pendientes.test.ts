@@ -284,6 +284,28 @@ describe("EnviarNotificacionesPendientes", () => {
     });
   });
 
+  describe("política de reintentos configurada", () => {
+    it("usa las esperas indicadas y agota los intentos que corresponden", async () => {
+      // 3 intentos en total: espera de 1 s tras el primero y de 2 s tras el segundo.
+      enviar = new EnviarNotificacionesPendientes(repositorio, cliente, reloj, registrador, {
+        politica: { maxIntentos: 3, esperasSegundos: [1, 2] },
+      });
+      cliente.responder(ERROR_500, ERROR_500, ERROR_500);
+      await crearNotificacion("e1");
+
+      await enviar.ejecutar();
+      expect(buscar("e1").proximoIntento.getTime() - reloj.ahora().getTime()).toBe(1000);
+      reloj.avanzar(1);
+      await enviar.ejecutar();
+      expect(buscar("e1").proximoIntento.getTime() - reloj.ahora().getTime()).toBe(2000);
+      reloj.avanzar(2);
+      await enviar.ejecutar();
+
+      expect(buscar("e1")).toMatchObject({ estado: "FALLIDA", intentos: 3 });
+      expect(cliente.llamadas).toHaveLength(3);
+    });
+  });
+
   describe("logs", () => {
     it("registra el aviso entregado con sus identificadores, el intento y el código", async () => {
       await crearNotificacion("e1");

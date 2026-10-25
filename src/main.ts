@@ -40,7 +40,14 @@ const enviarNotificaciones = new EnviarNotificacionesPendientes(
   new ClienteWebhookHttp(config.webhookTimeoutMs, reloj),
   reloj,
   registrador,
-  { tamanoLote: config.workerTamanoLote },
+  {
+    tamanoLote: config.workerTamanoLote,
+    // Con N esperas hay N + 1 intentos en total.
+    politica: {
+      maxIntentos: config.reintentoEsperasSegundos.length + 1,
+      esperasSegundos: config.reintentoEsperasSegundos,
+    },
+  },
 );
 const webhooks = new WebhookConfigRepositoryPrisma(prisma);
 const generadorSecretos = new GeneradorSecretosCrypto();

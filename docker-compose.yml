@@ -53,6 +53,8 @@ services:
       WORKER_INTERVAL_MS: ${WORKER_INTERVAL_MS:-2000}
       WORKER_BATCH_SIZE: ${WORKER_BATCH_SIZE:-10}
       WEBHOOK_TIMEOUT_MS: ${WEBHOOK_TIMEOUT_MS:-5000}
+      # Segundos de espera entre los 5 intentos de entrega. Con "1,1,1,1" un aviso fallido se ve en segundos.
+      REINTENTO_ESPERAS_SEGUNDOS: ${REINTENTO_ESPERAS_SEGUNDOS:-10,60,300,1800}
     ports:
       - "${APP_PORT:-3000}:3000"
     depends_on:

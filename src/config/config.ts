@@ -21,6 +21,16 @@ const esquemaEntorno = z.object({
   WEBHOOK_TIMEOUT_MS: z.coerce.number().int().min(100).default(5000),
   // Nivel mínimo de los logs. "silent" los apaga.
   LOG_LEVEL: z.enum(NIVELES_LOG).default("info"),
+  // Segundos de espera entre los intentos de entrega de un aviso, separados por comas. Con N
+  // esperas hay N + 1 intentos en total; como máximo 4 esperas (5 intentos, el tope de la prueba).
+  // Por defecto: 10 s, 1 min, 5 min y 30 min. Con valores cortos (por ejemplo "1,1,1,1") se puede
+  // ver un aviso fallido en segundos, útil para una demostración.
+  REINTENTO_ESPERAS_SEGUNDOS: z
+    .string()
+    .default("10,60,300,1800")
+    // Se separa por comas; el resultado aún no está validado, de eso se encarga el esquema siguiente.
+    .transform((texto): unknown => texto.split(",").map((valor) => valor.trim()))
+    .pipe(z.array(z.coerce.number().int().min(1).max(86_400)).min(1).max(4)),
 });
 
 /** Configuración ya validada y con nombres propios de la aplicación. */
@@ -31,6 +41,8 @@ export interface Config {
   readonly workerTamanoLote: number;
   readonly webhookTimeoutMs: number;
   readonly nivelLog: NivelLog;
+  /** Segundos de espera entre intentos de entrega; la cantidad de intentos es esta lista + 1. */
+  readonly reintentoEsperasSegundos: readonly number[];
 }
 
 /**
@@ -43,7 +55,7 @@ export function cargarConfig(entorno: NodeJS.ProcessEnv = process.env): Config {
 
   if (!resultado.success) {
     // Solo se listan los nombres de las variables con problema, nunca sus valores.
-    const variables = [...new Set(resultado.error.issues.map((i) => i.path.join(".")))];
+    const variables = [...new Set(resultado.error.issues.map((i) => String(i.path[0])))];
     throw new Error(`Configuración inválida. Revisa las variables: ${variables.join(", ")}`);
   }
 
@@ -54,5 +66,6 @@ export function cargarConfig(entorno: NodeJS.ProcessEnv = process.env): Config {
     workerTamanoLote: resultado.data.WORKER_BATCH_SIZE,
     webhookTimeoutMs: resultado.data.WEBHOOK_TIMEOUT_MS,
     nivelLog: resultado.data.LOG_LEVEL,
+    reintentoEsperasSegundos: resultado.data.REINTENTO_ESPERAS_SEGUNDOS,
   };
 }

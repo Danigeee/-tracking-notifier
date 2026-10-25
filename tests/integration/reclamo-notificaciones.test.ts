@@ -276,6 +276,31 @@ describe("reclamo y envío de notificaciones (PostgreSQL real)", () => {
       expect(fila.proximoIntento.getTime() - antes).toBeLessThan(15_000);
     });
 
+    it("con esperas cortas configuradas, el aviso queda FALLIDA en pocos segundos reales", async () => {
+      receptor = await crearReceptor(() => 500);
+      const tenant = tenantUnico();
+      // Mismo escenario que una demo: esperas de 1 segundo entre los 5 intentos.
+      const appRapida = ensamblar(prisma, { politica: { maxIntentos: 5, esperasSegundos: [1, 1, 1, 1] } });
+      await appRapida.configurarWebhook.ejecutar({ tenantId: tenant, url: receptor.url });
+      await sembrarNotificaciones(prisma, tenant, 1, "demo");
+
+      const inicio = Date.now();
+      // Se ejecutan pasadas del worker, sin tocar la base, hasta que el aviso quede FALLIDA.
+      let estado = "PENDIENTE";
+      while (estado !== "FALLIDA" && Date.now() - inicio < 20_000) {
+        await appRapida.enviarNotificaciones.ejecutar();
+        estado = (await prisma.notificacionDb.findFirstOrThrow({ where: { tenantId: tenant } })).estado;
+        if (estado !== "FALLIDA") await new Promise((resolver) => setTimeout(resolver, 200));
+      }
+
+      const segundos = (Date.now() - inicio) / 1000;
+      expect(estado).toBe("FALLIDA");
+      expect(receptor.recibidas).toHaveLength(5);
+      // 4 esperas de 1 s: unos 4 segundos, nunca los ~36 minutos de la política por defecto.
+      expect(segundos).toBeGreaterThanOrEqual(3.5);
+      expect(segundos).toBeLessThan(10);
+    });
+
     it("tras 5 fallos queda FALLIDA y ya no se reclama", async () => {
       receptor = await crearReceptor(() => 500);
       const tenant = tenantUnico();
