@@ -13,7 +13,7 @@
     "db:studio": "prisma studio",
     "dev": "tsx watch --env-file=.env src/main.ts",
     "start": "node dist/main.js",
-    "test:integration": "vitest run --config vitest.integration.config.mts",
+    "test:integration": "docker compose up -d --wait db && vitest run --config vitest.integration.config.mts",
     "test:all": "npm test && npm run test:integration",
     "postinstall": "prisma generate"
   },
