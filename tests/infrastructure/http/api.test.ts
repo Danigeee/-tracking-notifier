@@ -83,6 +83,55 @@ describe("API HTTP", () => {
       });
     });
 
+    describe("eventId en mayúsculas o minúsculas", () => {
+      // Un UUID es el mismo valor escrito en mayúsculas o en minúsculas.
+      const EVENTO_1_MAYUSCULAS = EVENTO_1.toUpperCase();
+
+      it("el mismo UUID en mayúsculas se reconoce como el mismo evento (duplicado)", async () => {
+        await registrar(TENANT_A, "GUIA-001", cuerpo(EVENTO_1, "CREADA", 0));
+
+        const res = await registrar(TENANT_A, "GUIA-001", cuerpo(EVENTO_1_MAYUSCULAS, "CREADA", 0));
+
+        expect(res.status).toBe(200);
+        expect(res.body.duplicado).toBe(true);
+      });
+
+      it("también al revés: primero en mayúsculas y luego en minúsculas", async () => {
+        await registrar(TENANT_A, "GUIA-001", cuerpo(EVENTO_1_MAYUSCULAS, "CREADA", 0));
+
+        const res = await registrar(TENANT_A, "GUIA-001", cuerpo(EVENTO_1, "CREADA", 0));
+
+        expect(res.status).toBe(200);
+        expect(res.body.duplicado).toBe(true);
+      });
+
+      it("el eventId se devuelve y se guarda siempre en minúsculas", async () => {
+        const res = await registrar(TENANT_A, "GUIA-001", cuerpo(EVENTO_1_MAYUSCULAS, "CREADA", 0));
+
+        expect(res.body.eventId).toBe(EVENTO_1);
+        const historial = await request(app).get("/guias/GUIA-001").set("X-Tenant-Id", TENANT_A);
+        expect(historial.body.eventos[0].eventId).toBe(EVENTO_1);
+      });
+
+      it("el repetido en mayúsculas no genera otra notificación", async () => {
+        await registrar(TENANT_A, "GUIA-001", cuerpo(EVENTO_1, "CREADA", 0));
+        await registrar(TENANT_A, "GUIA-001", cuerpo(EVENTO_1_MAYUSCULAS, "CREADA", 0));
+
+        const res = await request(app).get("/notificaciones").set("X-Tenant-Id", TENANT_A);
+
+        expect(res.body.notificaciones).toHaveLength(1);
+      });
+
+      it("mezclar mayúsculas y minúsculas dentro del mismo UUID también cuenta como el mismo", async () => {
+        await registrar(TENANT_A, "GUIA-001", cuerpo(EVENTO_1, "CREADA", 0));
+        const mezclado = EVENTO_1.slice(0, 10).toUpperCase() + EVENTO_1.slice(10);
+
+        const res = await registrar(TENANT_A, "GUIA-001", cuerpo(mezclado, "CREADA", 0));
+
+        expect(res.body.duplicado).toBe(true);
+      });
+    });
+
     it("responde 200 con duplicado=true si el eventId ya se recibió", async () => {
       await registrar(TENANT_A, "GUIA-001", cuerpo(EVENTO_1, "CREADA", 0));
 

@@ -174,6 +174,24 @@ describe("flujo completo (API + PostgreSQL + webhook reales)", () => {
     expect(receptor.recibidas).toHaveLength(1);
   });
 
+  it("un eventId en mayúsculas se reconoce como el mismo y el cliente lo recibe en minúsculas", async () => {
+    receptor = await crearReceptor();
+    const tenant = tenantUnico();
+    await configurarWebhook(tenant);
+
+    const primero = await registrar(tenant, "GUIA-1", cuerpo(EVENTO_1.toUpperCase(), "CREADA", 0));
+    const reenvio = await registrar(tenant, "GUIA-1", cuerpo(EVENTO_1, "CREADA", 0));
+    await app.enviarNotificaciones.ejecutar();
+
+    expect(primero.status).toBe(201);
+    expect(reenvio.status).toBe(200);
+    expect(reenvio.body.duplicado).toBe(true);
+    // Un solo aviso, con el identificador en minúsculas tanto en el cuerpo como en la cabecera.
+    expect(receptor.recibidas).toHaveLength(1);
+    expect(JSON.parse(receptor.recibidas[0]!.cuerpo).eventId).toBe(EVENTO_1);
+    expect(receptor.recibidas[0]!.cabeceras["x-event-id"]).toBe(EVENTO_1);
+  });
+
   it("si el cliente falla, se reintenta y al final el aviso llega", async () => {
     // El cliente responde 500 al primer intento y 200 al segundo.
     receptor = await crearReceptor((numero) => (numero === 1 ? 500 : 200));

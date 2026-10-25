@@ -23,7 +23,10 @@ export const esquemaTenantId = z
 
 /** Cuerpo de POST /guias/:guiaId/eventos. */
 export const esquemaEvento = z.object({
-  eventId: z.uuid("Debe ser un UUID"),
+  // Un UUID es el mismo valor en mayúsculas o en minúsculas. Se normaliza a minúsculas para que
+  // un reenvío escrito distinto se reconozca como el mismo evento (idempotencia) y para que el
+  // identificador sea siempre igual en la base, en la respuesta y en el aviso al cliente.
+  eventId: z.uuid("Debe ser un UUID").transform((id) => id.toLowerCase()),
   estado: z.enum(ESTADOS_GUIA, `Debe ser uno de: ${ESTADOS_GUIA.join(", ")}`),
   // ISO 8601 con zona horaria ("Z" o desplazamiento como +05:00).
   fechaEvento: z.iso.datetime({ offset: true, error: "Debe ser una fecha ISO 8601 con zona horaria" }),
