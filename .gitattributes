@@ -1,0 +1,3 @@
+# Los scripts de shell deben tener siempre saltos de línea de Linux (LF): con los de Windows (CRLF)
+# fallan al ejecutarse en Linux, en Docker y en GitHub Actions, aunque se hayan editado en Windows.
+*.sh text eol=lf

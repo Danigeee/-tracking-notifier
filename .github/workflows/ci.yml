@@ -1,0 +1,108 @@
+# Integración continua: en cada push a main y en cada pull request comprueba que el proyecto
+# compila, que las pruebas pasan y que `docker compose up` arranca y funciona.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # Permite ejecutarlo a mano desde la pestaña "Actions" de GitHub.
+  workflow_dispatch:
+
+# El pipeline solo necesita leer el código del repositorio.
+permissions:
+  contents: read
+
+# Si se sube otro commit a la misma rama mientras corre, se cancela la ejecución anterior.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Tipos, compilación, pruebas unitarias y pruebas de integración (con PostgreSQL real)
+  # ---------------------------------------------------------------------------
+  pruebas:
+    name: Pruebas
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # PostgreSQL de servicio para las pruebas de integración. Cada ejecución crea y borra
+    # su propia base temporal dentro de él (ver tests/integration/global-setup.ts).
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        # El trabajo no empieza hasta que PostgreSQL acepte conexiones.
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      # Conexión de administración que usan las pruebas de integración para crear su base temporal.
+      TEST_DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v4
+
+      - name: Instalar Node.js
+        uses: actions/setup-node@v4
+        with:
+          # Vitest exige Node 22.12 o superior; la imagen de Docker usa también Node 22.
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias (también genera el cliente de Prisma)
+        run: npm ci
+
+      - name: Comprobar los tipos
+        run: npm run typecheck
+
+      - name: Compilar
+        run: npm run build
+
+      - name: Pruebas unitarias
+        run: npm test
+
+      # No se usa `npm run test:integration`: ese script enciende la base con Docker Compose para
+      # el desarrollo local, y aquí ya existe el PostgreSQL de servicio.
+      - name: Pruebas de integración
+        run: npx vitest run --config vitest.integration.config.mts
+
+  # ---------------------------------------------------------------------------
+  # `docker compose up` desde cero y recorrido completo del flujo principal
+  # ---------------------------------------------------------------------------
+  docker:
+    name: Docker Compose
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v4
+
+      - name: Levantar el entorno (db, migraciones, servicio y webhook de prueba)
+        run: docker compose up -d --build
+
+      - name: Prueba de humo del flujo completo
+        run: bash scripts/prueba-humo.sh
+
+      # Si algo falló, se muestran los estados y los logs para poder diagnosticarlo.
+      - name: Logs de los contenedores
+        if: failure()
+        run: |
+          docker compose ps -a
+          docker compose logs --no-color
+
+      - name: Apagar el entorno
+        if: always()
+        run: docker compose down -v
