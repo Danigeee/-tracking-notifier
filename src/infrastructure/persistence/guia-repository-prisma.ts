@@ -12,14 +12,30 @@ export type ClientePrisma = Prisma.TransactionClient;
 export class GuiaRepositoryPrisma implements GuiaRepository {
   /**
    * @param cliente cliente de Prisma o de la transacción en curso
-   * @param bloquearGuia si es true, `buscar` toma un bloqueo exclusivo sobre la guía
-   *        hasta que termine la transacción. Se usa al registrar eventos para que
-   *        dos peticiones simultáneas de la misma guía se ejecuten una tras otra.
+   * @param bloquearGuia si es true, `guiaDelEvento` y `buscar` toman bloqueos exclusivos
+   *        (sobre el evento y sobre la guía) hasta que termine la transacción. Se usa al
+   *        registrar eventos para que dos peticiones simultáneas del mismo evento o de la
+   *        misma guía se ejecuten una tras otra.
    */
   constructor(
     private readonly cliente: ClientePrisma,
     private readonly bloquearGuia = false,
   ) {}
+
+  async guiaDelEvento(tenantId: string, eventId: string): Promise<string | null> {
+    if (this.bloquearGuia) {
+      // Bloqueo asociado a (tenant, evento): si dos peticiones traen el mismo eventId a la vez,
+      // la segunda espera a que la primera termine y entonces ve su evento ya guardado.
+      await this.cliente.$executeRaw`
+        SELECT pg_advisory_xact_lock(hashtextextended(${`${tenantId}:evento:${eventId}`}, 0))`;
+    }
+
+    const fila = await this.cliente.eventoGuiaDb.findFirst({
+      where: { tenantId, eventId },
+      select: { guiaId: true },
+    });
+    return fila?.guiaId ?? null;
+  }
 
   async buscar(tenantId: string, guiaId: string): Promise<Guia | null> {
     if (this.bloquearGuia) {

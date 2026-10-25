@@ -1,6 +1,7 @@
 // Pruebas del caso de uso RegistrarEvento con repositorios en memoria.
 
 import { beforeEach, describe, expect, it } from "vitest";
+import { EventIdYaUsadoError } from "../../src/application/errores";
 import {
   RegistrarEvento,
   RegistrarEventoComando,
@@ -125,6 +126,68 @@ describe("RegistrarEvento", () => {
     // La guía del tenant A no se alteró.
     const guiaA = await guias.buscar(TENANT_A, GUIA);
     expect(guiaA?.estadoActual).toBe("EN_RUTA");
+  });
+
+  describe("eventId único por cliente", () => {
+    /** Mismo cliente, otra guía. */
+    const enOtraGuia = (eventId: string, estado: EstadoGuia, minuto: number) => ({
+      ...comando(eventId, estado, minuto),
+      guiaId: "GUIA-002",
+    });
+
+    it("rechaza un eventId que el cliente ya usó en otra guía", async () => {
+      await registrarEvento.ejecutar(comando("e1", "CREADA", 0));
+
+      await expect(registrarEvento.ejecutar(enOtraGuia("e1", "CREADA", 0))).rejects.toThrow(
+        EventIdYaUsadoError,
+      );
+    });
+
+    it("el rechazo no crea la guía, ni guarda nada, ni genera una notificación", async () => {
+      await registrarEvento.ejecutar(comando("e1", "CREADA", 0));
+      const guardadosAntes = guias.vecesGuardado;
+
+      await expect(registrarEvento.ejecutar(enOtraGuia("e1", "CREADA", 0))).rejects.toThrow();
+
+      expect(await guias.buscar(TENANT_A, "GUIA-002")).toBeNull();
+      expect(guias.vecesGuardado).toBe(guardadosAntes);
+      expect(notificaciones.todas().map((n) => n.eventId)).toEqual(["e1"]);
+    });
+
+    it("también rechaza reutilizarlo en otra guía que ya existe", async () => {
+      await registrarEvento.ejecutar(comando("e1", "CREADA", 0));
+      await registrarEvento.ejecutar(enOtraGuia("e2", "CREADA", 0));
+
+      await expect(registrarEvento.ejecutar(enOtraGuia("e1", "EN_RUTA", 5))).rejects.toThrow(
+        EventIdYaUsadoError,
+      );
+    });
+
+    it("el mismo eventId en la MISMA guía sigue siendo un duplicado, no un error", async () => {
+      await registrarEvento.ejecutar(comando("e1", "CREADA", 0));
+
+      const resultado = await registrarEvento.ejecutar(comando("e1", "CREADA", 0));
+
+      expect(resultado.resultado).toBe("DUPLICADO");
+    });
+
+    it("otro cliente SÍ puede usar el mismo eventId", async () => {
+      await registrarEvento.ejecutar(comando("e1", "CREADA", 0, TENANT_A));
+
+      const resultado = await registrarEvento.ejecutar(comando("e1", "CREADA", 0, TENANT_B));
+
+      expect(resultado.resultado).toBe("REGISTRADO");
+    });
+
+    it("el error lleva el código EVENT_ID_YA_USADO y no revela en qué guía se usó", async () => {
+      await registrarEvento.ejecutar(comando("e1", "CREADA", 0));
+
+      const error = await registrarEvento.ejecutar(enOtraGuia("e1", "CREADA", 0)).catch((e) => e);
+
+      expect(error).toBeInstanceOf(EventIdYaUsadoError);
+      expect(error.codigo).toBe("EVENT_ID_YA_USADO");
+      expect(error.message).not.toContain(GUIA);
+    });
   });
 
   describe("logs", () => {

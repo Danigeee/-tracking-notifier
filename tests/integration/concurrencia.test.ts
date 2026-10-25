@@ -132,6 +132,58 @@ describe("concurrencia (PostgreSQL real)", () => {
     });
   });
 
+  describe("eventId único por cliente", () => {
+    it("12 peticiones simultáneas con el mismo eventId en guías distintas aceptan UNA sola", async () => {
+      const tenant = tenantUnico();
+
+      // Alternan entre tres guías: todas traen el mismo eventId a la vez.
+      const resultados = await Promise.allSettled(
+        Array.from({ length: 12 }, (_, i) =>
+          app.registrarEvento.ejecutar({
+            tenantId: tenant,
+            guiaId: `GUIA-${i % 3}`,
+            eventId: "evento-compartido",
+            estado: "CREADA",
+            fechaEvento: fecha(0),
+          }),
+        ),
+      );
+
+      const aceptadas = resultados.filter((r) => r.status === "fulfilled" && r.value.resultado === "REGISTRADO");
+      expect(aceptadas).toHaveLength(1);
+      // El resto: duplicado en la guía ganadora, o rechazo por haberse usado en otra guía. Nunca un error inesperado.
+      for (const r of resultados) {
+        if (r.status === "rejected") expect(r.reason).toMatchObject({ codigo: "EVENT_ID_YA_USADO" });
+      }
+      // Quedó exactamente un evento y un aviso con ese eventId.
+      expect(await prisma.eventoGuiaDb.count({ where: { tenantId: tenant, eventId: "evento-compartido" } })).toBe(1);
+      expect(await prisma.notificacionDb.count({ where: { tenantId: tenant, eventId: "evento-compartido" } })).toBe(1);
+    });
+
+    it("en cada guía se rechaza el reutilizado y no queda ninguna guía huérfana", async () => {
+      const tenant = tenantUnico();
+      await app.registrarEvento.ejecutar({
+        tenantId: tenant,
+        guiaId: "GUIA-A",
+        eventId: "e1",
+        estado: "CREADA",
+        fechaEvento: fecha(0),
+      });
+
+      await expect(
+        app.registrarEvento.ejecutar({
+          tenantId: tenant,
+          guiaId: "GUIA-B",
+          eventId: "e1",
+          estado: "CREADA",
+          fechaEvento: fecha(0),
+        }),
+      ).rejects.toMatchObject({ codigo: "EVENT_ID_YA_USADO" });
+
+      expect(await contar(prisma, tenant, "GUIA-B")).toEqual({ guias: 0, eventos: 0, notificaciones: 0 });
+    });
+  });
+
   describe("secreto del webhook", () => {
     it("12 configuraciones simultáneas de un tenant nuevo muestran un único secreto, el guardado", async () => {
       const tenant = tenantUnico();

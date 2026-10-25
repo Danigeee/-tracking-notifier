@@ -3,7 +3,11 @@
 // Aquí (y solo aquí) se decide qué código HTTP corresponde a cada error del
 // dominio o de la aplicación. Esas capas no conocen HTTP.
 
-import { GuiaNoEncontradaError, WebhookNoConfiguradoError } from "../../application/errores";
+import {
+  EventIdYaUsadoError,
+  GuiaNoEncontradaError,
+  WebhookNoConfiguradoError,
+} from "../../application/errores";
 import {
   EventoFueraDeOrdenError,
   PrimerEventoInvalidoError,
@@ -70,7 +74,11 @@ export function traducirError(error: unknown): RespuestaError {
     return respuesta(404, error.codigo, error.message);
   }
   // Conflictos con el estado actual de la guía.
-  if (error instanceof TransicionInvalidaError || error instanceof EventoFueraDeOrdenError) {
+  if (
+    error instanceof TransicionInvalidaError ||
+    error instanceof EventoFueraDeOrdenError ||
+    error instanceof EventIdYaUsadoError
+  ) {
     return respuesta(409, error.codigo, error.message);
   }
   // El contenido es válido en formato pero no se puede procesar (guía que no empieza en CREADA).

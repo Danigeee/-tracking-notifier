@@ -166,6 +166,37 @@ describe("persistencia (PostgreSQL real)", () => {
       await expect(app.notificaciones.crear(otra)).rejects.toMatchObject({ code: "P2002" });
     });
 
+    it("la base impide el mismo eventId en dos guías de un cliente (índice único)", async () => {
+      const tenant = tenantUnico();
+      await app.guias.guardar(Guia.iniciar("GUIA-1", tenant, evento("e1", "CREADA", 0)));
+      await app.guias.guardar(Guia.iniciar("GUIA-2", tenant, evento("e2", "CREADA", 0)));
+
+      // Se salta la aplicación y se inserta directamente: la base debe rechazarlo igual.
+      const reutilizado = prisma.eventoGuiaDb.create({
+        data: { tenantId: tenant, guiaId: "GUIA-2", eventId: "e1", estado: "EN_RUTA", fechaEvento: new Date() },
+      });
+
+      await expect(reutilizado).rejects.toMatchObject({ code: "P2002" });
+    });
+
+    it("la restricción es por cliente: otro cliente puede usar el mismo eventId", async () => {
+      await app.guias.guardar(Guia.iniciar("GUIA-1", tenantUnico("a"), evento("mismo", "CREADA", 0)));
+
+      await expect(
+        app.guias.guardar(Guia.iniciar("GUIA-1", tenantUnico("b"), evento("mismo", "CREADA", 0))),
+      ).resolves.toBeUndefined();
+    });
+
+    it("guiaDelEvento devuelve la guía donde está el evento, o null si no existe", async () => {
+      const tenant = tenantUnico();
+      await app.guias.guardar(Guia.iniciar("GUIA-7", tenant, evento("e7", "CREADA", 0)));
+
+      expect(await app.guias.guiaDelEvento(tenant, "e7")).toBe("GUIA-7");
+      expect(await app.guias.guiaDelEvento(tenant, "no-existe")).toBeNull();
+      // Un evento de otro cliente no se ve.
+      expect(await app.guias.guiaDelEvento(tenantUnico("otro"), "e7")).toBeNull();
+    });
+
     it("no admite una guía de un tenant que no existe", async () => {
       const sinTenant = prisma.guiaDb.create({ data: { tenantId: tenantUnico("fantasma"), id: "G" } });
 

@@ -21,6 +21,22 @@ export abstract class ErrorAplicacion extends Error {
 }
 
 /**
+ * Se lanza cuando se intenta registrar, en una guía, un `eventId` que el cliente ya usó en OTRA guía.
+ *
+ * Un `eventId` identifica un único evento de un cliente. Si se aceptara en dos guías, el cliente
+ * recibiría dos avisos con el mismo identificador y, al deduplicar por él, descartaría uno.
+ * No se informa en cuál guía se usó para no exponer más de lo necesario.
+ */
+export class EventIdYaUsadoError extends ErrorAplicacion {
+  constructor(
+    /** Identificador del evento reutilizado. */
+    public readonly eventId: string,
+  ) {
+    super("EVENT_ID_YA_USADO", "El eventId ya se usó en otra guía de este cliente");
+  }
+}
+
+/**
  * Se lanza cuando se consulta el webhook de un tenant que todavía no lo configuró.
  */
 export class WebhookNoConfiguradoError extends ErrorAplicacion {

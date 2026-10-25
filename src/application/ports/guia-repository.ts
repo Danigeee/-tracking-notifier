@@ -14,6 +14,13 @@ export interface GuiaRepository {
   buscar(tenantId: string, guiaId: string): Promise<Guia | null>;
 
   /**
+   * Indica en qué guía de un tenant está registrado un evento.
+   * Sirve para impedir que el mismo `eventId` se use en dos guías distintas.
+   * @returns el identificador de la guía, o `null` si el evento no existe para ese tenant.
+   */
+  guiaDelEvento(tenantId: string, eventId: string): Promise<string | null>;
+
+  /**
    * Guarda la guía con su historial actual.
    * Si la guía es nueva la crea; si ya existía, agrega los eventos que falten.
    */

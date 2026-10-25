@@ -1,6 +1,7 @@
 // Caso de uso: registrar un cambio de estado de una guía.
 
 import { EstadoGuia } from "../../domain/estado-guia";
+import { EventIdYaUsadoError } from "../errores";
 import { EventoGuia } from "../../domain/evento-guia";
 import { Guia, ResultadoRegistro } from "../../domain/guia";
 import { Notificacion } from "../../domain/notificacion";
@@ -41,6 +42,7 @@ export class RegistrarEvento {
    * (el primer evento debe ser CREADA). Por cada evento aceptado deja creada su
    * notificación pendiente. Todo ocurre en una sola transacción.
    *
+   * @throws EventIdYaUsadoError si el eventId ya se usó en otra guía del cliente
    * @throws PrimerEventoInvalidoError, EventoFueraDeOrdenError o
    *         TransicionInvalidaError si se incumple alguna regla del dominio.
    */
@@ -53,6 +55,14 @@ export class RegistrarEvento {
     };
 
     const resultado = await this.unidadDeTrabajo.ejecutar<RegistrarEventoResultado>(async ({ guias, notificaciones }) => {
+      // El eventId es único por cliente: si ya está en OTRA guía, se rechaza. Esta consulta va
+      // primero porque, dentro de la transacción, también bloquea el evento y así dos
+      // peticiones simultáneas con el mismo eventId se ejecutan una tras otra.
+      const guiaDelEvento = await guias.guiaDelEvento(comando.tenantId, comando.eventId);
+      if (guiaDelEvento !== null && guiaDelEvento !== comando.guiaId) {
+        throw new EventIdYaUsadoError(comando.eventId);
+      }
+
       const existente = await guias.buscar(comando.tenantId, comando.guiaId);
 
       // Guía nueva: nace con este evento (lanza error si no es CREADA).

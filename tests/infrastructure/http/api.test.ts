@@ -261,6 +261,43 @@ describe("API HTTP", () => {
         expect(res.status).toBe(409);
       });
 
+      it("409 si el eventId ya se usó en otra guía del mismo cliente", async () => {
+        await registrar(TENANT_A, "GUIA-001", cuerpo(EVENTO_1, "CREADA", 0));
+
+        const res = await registrar(TENANT_A, "GUIA-002", cuerpo(EVENTO_1, "CREADA", 0));
+
+        expect(res.status).toBe(409);
+        expect(res.body.error.codigo).toBe("EVENT_ID_YA_USADO");
+        // La otra guía no se creó.
+        const consulta = await request(app).get("/guias/GUIA-002").set("X-Tenant-Id", TENANT_A);
+        expect(consulta.status).toBe(404);
+      });
+
+      it("el eventId reutilizado tampoco genera un segundo aviso", async () => {
+        await registrar(TENANT_A, "GUIA-001", cuerpo(EVENTO_1, "CREADA", 0));
+        await registrar(TENANT_A, "GUIA-002", cuerpo(EVENTO_1, "CREADA", 0));
+
+        const res = await request(app).get("/notificaciones").set("X-Tenant-Id", TENANT_A);
+
+        expect(res.body.notificaciones).toHaveLength(1);
+      });
+
+      it("otro cliente puede usar el mismo eventId sin problema", async () => {
+        await registrar(TENANT_A, "GUIA-001", cuerpo(EVENTO_1, "CREADA", 0));
+
+        const res = await registrar(TENANT_B, "GUIA-001", cuerpo(EVENTO_1, "CREADA", 0));
+
+        expect(res.status).toBe(201);
+      });
+
+      it("el eventId reutilizado en otra guía en mayúsculas también se rechaza", async () => {
+        await registrar(TENANT_A, "GUIA-001", cuerpo(EVENTO_1, "CREADA", 0));
+
+        const res = await registrar(TENANT_A, "GUIA-002", cuerpo(EVENTO_1.toUpperCase(), "CREADA", 0));
+
+        expect(res.status).toBe(409);
+      });
+
       it("409 si el evento llega fuera de orden", async () => {
         await registrar(TENANT_A, "GUIA-001", cuerpo(EVENTO_1, "CREADA", 10));
 

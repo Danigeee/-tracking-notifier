@@ -77,6 +77,8 @@ model EventoGuiaDb {
 
   // La clave primaria también garantiza que un eventId no se repite dentro de una guía.
   @@id([tenantId, guiaId, eventId])
+  // Un eventId identifica un único evento de un cliente: no puede estar en dos guías distintas.
+  @@unique([tenantId, eventId])
   @@index([tenantId, guiaId, secuencia])
   @@map("eventos_guia")
 }

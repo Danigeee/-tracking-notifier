@@ -28,6 +28,16 @@ export class GuiaRepositoryEnMemoria implements GuiaRepository {
     return eventos ? Guia.reconstruir(guiaId, tenantId, eventos) : null;
   }
 
+  async guiaDelEvento(tenantId: string, eventId: string): Promise<string | null> {
+    for (const [clave, eventos] of this.almacen) {
+      const [tenant, guiaId] = clave.split("::");
+      if (tenant === tenantId && eventos.some((e) => e.eventId === eventId)) {
+        return guiaId ?? null;
+      }
+    }
+    return null;
+  }
+
   async guardar(guia: Guia): Promise<void> {
     this.vecesGuardado++;
     this.almacen.set(this.clave(guia.tenantId, guia.id), [...guia.eventos]);

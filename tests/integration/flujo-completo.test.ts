@@ -271,6 +271,22 @@ describe("flujo completo (API + PostgreSQL + webhook reales)", () => {
     expect(verificar(viejo)).toBe(false);
   });
 
+  it("el mismo eventId en otra guía da 409 y el cliente no recibe un aviso repetido", async () => {
+    receptor = await crearReceptor();
+    const tenant = tenantUnico();
+    await configurarWebhook(tenant);
+    await registrar(tenant, "GUIA-1", cuerpo(EVENTO_1, "CREADA", 0));
+
+    const reutilizado = await registrar(tenant, "GUIA-2", cuerpo(EVENTO_1, "CREADA", 0));
+    await app.enviarNotificaciones.ejecutar();
+
+    expect(reutilizado.status).toBe(409);
+    expect(reutilizado.body.error.codigo).toBe("EVENT_ID_YA_USADO");
+    // El cliente recibió un único aviso con ese identificador.
+    expect(receptor.llegadasPorEvento().get(EVENTO_1)).toBe(1);
+    expect((await request(api).get("/guias/GUIA-2").set("X-Tenant-Id", tenant)).status).toBe(404);
+  });
+
   it("aislamiento: un cliente no ve las guías, el webhook ni los avisos de otro", async () => {
     receptor = await crearReceptor();
     const a = tenantUnico("a");
